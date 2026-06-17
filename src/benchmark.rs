@@ -267,7 +267,7 @@ impl BenchmarkRunner {
 /// Gracefully skips if Julia is not installed rather than panicking.
 pub fn run_julia_script(script: &str, snapshot_file: &str) {
     let result = std::process::Command::new("julia")
-        .args(["--project=julia", &format!("julia/{}", script), snapshot_file])
+        .args(["--project=analysis", &format!("analysis/{}", script), snapshot_file])
         .status();
 
     match result {
@@ -275,7 +275,7 @@ pub fn run_julia_script(script: &str, snapshot_file: &str) {
         Ok(s) => eprintln!("[Julia] {} exited with {}", script, s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             eprintln!(
-                "[Julia] not installed — skipping {}. Run scripts/setup_julia.sh to install.",
+                "[Julia] not installed — skipping {}. Run scripts/setup.sh to install.",
                 script
             );
         }

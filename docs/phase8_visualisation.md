@@ -12,7 +12,7 @@ Phase 8 turns that data into:
 
 ## Understanding the Input JSON
 
-The snapshot file (e.g. `adversarial_snapshots.json`) is an array of objects:
+The snapshot file (e.g. `data/adversarial_snapshots.json`) is an array of objects:
 
 ```json
 [
@@ -51,12 +51,12 @@ bash scripts/setup_julia.sh
 ```
 
 This installs Julia (via juliaup if needed), adds JSON, Plots, and Statistics to
-the `julia/` project environment, and precompiles them. It creates
-`julia/Manifest.toml`, which you should commit so collaborators get exact
+the `analysis/` project environment, and precompiles them. It creates
+`analysis/Manifest.toml`, which you should commit so collaborators get exact
 package versions:
 
 ```bash
-git add julia/Manifest.toml
+git add analysis/Manifest.toml
 git commit -m "Lock Julia dependency versions"
 ```
 
@@ -64,16 +64,16 @@ git commit -m "Lock Julia dependency versions"
 
 ## Running the Scripts
 
-Both scripts are run from the **repo root** using the `--project=julia` flag,
-which activates the isolated environment in the `julia/` directory.
+Both scripts are run from the **repo root** using the `--project=analysis` flag,
+which activates the isolated environment in the `analysis/` directory.
 
 ### Plot metrics
 
 ```bash
-julia --project=julia julia/plot_metrics.jl adversarial_snapshots.json
+julia --project=analysis analysis/plot_metrics.jl data/adversarial_snapshots.json
 ```
 
-Produces `adversarial_snapshots_metrics.png` — a three-panel figure:
+Produces `data/adversarial_snapshots_metrics.png` — a three-panel figure:
 
 1. **Factor Utilisation (%)** — how much work stayed in factor space vs falling
    back to row scans. Should be near 100% throughout.
@@ -89,7 +89,7 @@ workload switched.
 Terminal output:
 
 ```
-Plot saved to adversarial_snapshots_metrics.png
+Plot saved to data/adversarial_snapshots_metrics.png
 
 === Metrics Summary ===
 Number of snapshots: 18
@@ -103,10 +103,10 @@ Mean UAF: 3.82
 ### Half-life report
 
 ```bash
-julia --project=julia julia/halflife_report.jl adversarial_snapshots.json
+julia --project=analysis analysis/halflife_report.jl data/adversarial_snapshots.json
 ```
 
-Produces `adversarial_snapshots_lifetimes.png` — a histogram of how long each
+Produces `data/adversarial_snapshots_lifetimes.png` — a histogram of how long each
 evicted operational factor survived before being swept out. Also prints:
 
 ```
@@ -152,7 +152,7 @@ through the `run_julia_script()` bridge in `src/benchmark.rs`. If Julia is not
 installed, the binary skips the analysis and prints a hint:
 
 ```
-[Julia] not installed — skipping plot_metrics.jl. Run scripts/setup_julia.sh to install.
+[Julia] not installed — skipping plot_metrics.jl. Run scripts/setup.sh to install.
 ```
 
 To add Julia analysis to the regular benchmark binary, add these two lines at the
@@ -160,7 +160,7 @@ end of `src/main.rs`:
 
 ```rust
 use jimvd::benchmark::run_julia_script;
-run_julia_script("plot_metrics.jl", "snapshots.json");
+run_julia_script("plot_metrics.jl", "data/snapshots.json");
 ```
 
 ---

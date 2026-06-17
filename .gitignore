@@ -1,5 +1,5 @@
 /target/
 /jimvd/target/
-adversarial_snapshots.json
+data/*.json
 data/*_metrics.png
 data/*_lifetimes.png

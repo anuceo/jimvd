@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install Julia (if missing) and set up the project's Julia environment.
-# Run this once from the repo root before using any julia/ scripts.
+# Run this once from the repo root before using any analysis/ scripts.
 set -euo pipefail
 
 # ── 1. Install Julia if not present ──────────────────────────────────────────
@@ -13,10 +13,10 @@ fi
 echo "Found: $(julia --version)"
 
 # ── 2. Resolve / install dependencies ────────────────────────────────────────
-JULIA_DIR="$(cd "$(dirname "$0")/../julia" && pwd)"
-echo "Setting up Julia environment at $JULIA_DIR ..."
+ANALYSIS_DIR="$(cd "$(dirname "$0")/../analysis" && pwd)"
+echo "Setting up Julia environment at $ANALYSIS_DIR ..."
 
-julia --project="$JULIA_DIR" -e '
+julia --project="$ANALYSIS_DIR" -e '
     using Pkg
     # Pkg.instantiate creates Manifest.toml on first run, or restores it from
     # an existing one. Using Pkg.add first ensures any packages not yet in the
@@ -28,8 +28,8 @@ julia --project="$JULIA_DIR" -e '
 '
 
 echo ""
-echo "Julia environment ready. Commit julia/Manifest.toml to lock exact versions."
+echo "Julia environment ready. Commit analysis/Manifest.toml to lock exact versions."
 echo ""
 echo "Usage (from repo root):"
-echo "  julia --project=julia julia/plot_metrics.jl    adversarial_snapshots.json"
-echo "  julia --project=julia julia/halflife_report.jl adversarial_snapshots.json"
+echo "  julia --project=analysis analysis/plot_metrics.jl    data/adversarial_snapshots.json"
+echo "  julia --project=analysis analysis/halflife_report.jl data/adversarial_snapshots.json"

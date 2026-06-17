@@ -148,7 +148,7 @@ visible against the raw distribution.
 ## Running the Script
 
 ```bash
-julia --project=julia julia/halflife_report.jl adversarial_snapshots.json
+julia --project=analysis analysis/halflife_report.jl data/adversarial_snapshots.json
 ```
 
 Must be run from the **repo root** so `--project=julia` resolves correctly.
@@ -218,5 +218,5 @@ To add the half-life report to the regular benchmark binary, append to
 
 ```rust
 use jimvd::benchmark::run_julia_script;
-run_julia_script("halflife_report.jl", "snapshots.json");
+run_julia_script("halflife_report.jl", "data/snapshots.json");
 ```

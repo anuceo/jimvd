@@ -7,7 +7,7 @@ use std::fs;
 fn main() -> Result<()> {
     env_logger::init();
 
-    let config_str = fs::read_to_string("benchmarks/adversarial_config.json")?;
+    let config_str = fs::read_to_string("config/adversarial.json")?;
     let full_config: Value = serde_json::from_str(&config_str)?;
 
     let transition_at: usize = full_config["transition_at_ops"]
@@ -72,16 +72,17 @@ fn main() -> Result<()> {
 
     // ── Write output ─────────────────────────────────────────────────────────
     let json_str = serde_json::to_string_pretty(&all_snapshots)?;
-    fs::write("adversarial_snapshots.json", &json_str)?;
+    fs::create_dir_all("data")?;
+    fs::write("data/adversarial_snapshots.json", &json_str)?;
 
     println!(
-        "\nAdversarial test complete — {} snapshots written to adversarial_snapshots.json",
+        "\nAdversarial test complete — {} snapshots written to data/adversarial_snapshots.json",
         all_snapshots.len()
     );
 
     // Offline analysis — no-op if Julia is not installed.
-    run_julia_script("plot_metrics.jl",    "adversarial_snapshots.json");
-    run_julia_script("halflife_report.jl", "adversarial_snapshots.json");
+    run_julia_script("plot_metrics.jl",    "data/adversarial_snapshots.json");
+    run_julia_script("halflife_report.jl", "data/adversarial_snapshots.json");
 
     Ok(())
 }

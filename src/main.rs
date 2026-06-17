@@ -7,7 +7,7 @@ use std::fs;
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let config_str = fs::read_to_string("benchmarks/workload_iam.json")?;
+    let config_str = fs::read_to_string("config/workload_iam.json")?;
     let config: WorkloadConfig = serde_json::from_str(&config_str)?;
     println!("Loaded workload: {:?}\n", config.workload_name);
 
