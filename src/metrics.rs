@@ -12,6 +12,8 @@ pub struct Metrics {
     pub nodes_touched_by_updates: AtomicU64,
     /// Number of objects that were inserted, updated, or deleted.
     pub objects_updated: AtomicU64,
+    /// Joins that triggered the cardinality-guard fallback to row-space.
+    pub join_fallbacks: AtomicU64,
 }
 
 impl Metrics {
@@ -22,6 +24,7 @@ impl Metrics {
             row_ops: AtomicU64::new(0),
             nodes_touched_by_updates: AtomicU64::new(0),
             objects_updated: AtomicU64::new(0),
+            join_fallbacks: AtomicU64::new(0),
         }
     }
 

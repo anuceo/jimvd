@@ -477,6 +477,7 @@ impl FactorGraph {
             row_ops: metrics.row_ops.load(Ordering::Relaxed),
             nodes_touched_by_updates: metrics.nodes_touched_by_updates.load(Ordering::Relaxed),
             objects_updated: metrics.objects_updated.load(Ordering::Relaxed),
+            join_fallbacks: metrics.join_fallbacks.load(Ordering::Relaxed),
             factor_utilization: metrics.factor_utilization(),
             uaf: metrics.uaf(),
             current_tick: self.current_tick,
@@ -658,6 +659,29 @@ impl MultiTableGraph {
             // Row-based fallback: nested-loop join on the raw object stores.
             metrics.row_ops.fetch_add(1, Ordering::Relaxed);
             metrics.total_queries.fetch_add(1, Ordering::Relaxed);
+            metrics.join_fallbacks.fetch_add(1, Ordering::Relaxed);
+            let mut result = HashSet::new();
+            for &l in &left_universe {
+                let lval = left_graph.objects.get(&l).and_then(|p| p.get(join_attr));
+                if lval.is_none() { continue; }
+                for &r in &right_universe {
+                    if right_graph.objects.get(&r).and_then(|p| p.get(join_attr)) == lval {
+                        result.insert((l, r));
+                    }
+                }
+            }
+            return (result, true);
+        }
+
+        // Cardinality guard: if the estimated output size is too large, fall back to rows.
+        const JOIN_SIZE_THRESHOLD: usize = 10_000;
+        let estimated = self.estimate_join_size(
+            left_table, right_table, join_attr, &left_universe, &right_universe,
+        );
+        if estimated > JOIN_SIZE_THRESHOLD {
+            metrics.row_ops.fetch_add(1, Ordering::Relaxed);
+            metrics.total_queries.fetch_add(1, Ordering::Relaxed);
+            metrics.join_fallbacks.fetch_add(1, Ordering::Relaxed);
             let mut result = HashSet::new();
             for &l in &left_universe {
                 let lval = left_graph.objects.get(&l).and_then(|p| p.get(join_attr));
@@ -735,6 +759,7 @@ impl MultiTableGraph {
             row_ops:       metrics.row_ops.load(Ordering::Relaxed),
             nodes_touched_by_updates: metrics.nodes_touched_by_updates.load(Ordering::Relaxed),
             objects_updated: metrics.objects_updated.load(Ordering::Relaxed),
+            join_fallbacks: metrics.join_fallbacks.load(Ordering::Relaxed),
             factor_utilization: metrics.factor_utilization(),
             uaf:  metrics.uaf(),
             current_tick: self.max_tick(),
@@ -743,6 +768,45 @@ impl MultiTableGraph {
             active_factors:  active_lcs,
             evicted_factors: evicted_lcs,
         }
+    }
+
+    fn estimate_join_size(
+        &self,
+        left_table: &str,
+        right_table: &str,
+        join_attr: &str,
+        left_ids: &HashSet<ObjectId>,
+        right_ids: &HashSet<ObjectId>,
+    ) -> usize {
+        let left  = self.table(left_table);
+        let right = self.table(right_table);
+        let join_prefix = format!("{}=", join_attr);
+        let mut total = 0usize;
+        let left_factors: Vec<&Factor> = left.factors.values()
+            .filter(|f| f.intent.iter().any(|a| a.starts_with(&join_prefix)))
+            .collect();
+        let right_factors: Vec<&Factor> = right.factors.values()
+            .filter(|f| f.intent.iter().any(|a| a.starts_with(&join_prefix)))
+            .collect();
+        for lf in &left_factors {
+            let lval = match lf.intent.iter().find(|a| a.starts_with(&join_prefix)) {
+                Some(a) => a.splitn(2, '=').nth(1).unwrap_or(""),
+                None => continue,
+            };
+            let l_size = lf.extent.iter().filter(|id| left_ids.contains(id)).count();
+            if l_size == 0 { continue; }
+            for rf in &right_factors {
+                let rval = match rf.intent.iter().find(|a| a.starts_with(&join_prefix)) {
+                    Some(a) => a.splitn(2, '=').nth(1).unwrap_or(""),
+                    None => continue,
+                };
+                if lval != rval { continue; }
+                let r_size = rf.extent.iter().filter(|id| right_ids.contains(id)).count();
+                if r_size == 0 { continue; }
+                total = total.saturating_add(l_size * r_size);
+            }
+        }
+        total
     }
 }
 

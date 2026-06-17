@@ -1,0 +1,78 @@
+{
+  "workload_name": "many_to_many",
+  "description": "Three-table many-to-many workload: orders ⋈ order_items ⋈ products. orders⋈order_items exceeds the cardinality guard (row fallback); order_items⋈products stays in factor space.",
+  "adaptation": {
+    "materialization_threshold": 3,
+    "eviction_ticks": 500
+  },
+  "tables": {
+    "orders": {
+      "attributes": {
+        "order_id":  ["O1", "O2", "O3", "O4", "O5", "O6", "O7", "O8", "O9", "O10"],
+        "status":    ["pending", "shipped", "delivered", "cancelled"],
+        "region":    ["US", "EU", "APAC"]
+      },
+      "initial_objects": 200,
+      "correlation_hint": "low"
+    },
+    "products": {
+      "attributes": {
+        "product_id": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"],
+        "category":   ["A", "B", "C", "D"],
+        "supplier":   ["SupX", "SupY", "SupZ"]
+      },
+      "initial_objects": 30,
+      "correlation_hint": "low"
+    },
+    "order_items": {
+      "attributes": {
+        "order_id":   ["O1", "O2", "O3", "O4", "O5", "O6", "O7", "O8", "O9", "O10"],
+        "product_id": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"],
+        "qty":        ["1", "2", "3", "4", "5"]
+      },
+      "initial_objects": 600,
+      "correlation_hint": "low"
+    }
+  },
+  "query_mix": [
+    {
+      "type": "join", "weight": 40,
+      "left_table": "orders",
+      "right_table": "order_items",
+      "join_attribute": "order_id",
+      "left_filters": [],
+      "right_filters": []
+    },
+    {
+      "type": "join", "weight": 30,
+      "left_table": "order_items",
+      "right_table": "products",
+      "join_attribute": "product_id",
+      "left_filters": [],
+      "right_filters": []
+    },
+    {
+      "type": "join", "weight": 30,
+      "left_table": "order_items",
+      "right_table": "products",
+      "join_attribute": "product_id",
+      "left_filters": [],
+      "right_filters": [
+        { "type": "eq", "attribute": "category", "values": ["A"] }
+      ]
+    }
+  ],
+  "write_mix": {
+    "insert_rate": 0.0,
+    "update_rate": 0.0,
+    "delete_rate": 0.0,
+    "attributes": ["status"],
+    "table": "orders"
+  },
+  "run_options": {
+    "total_operations": 3000,
+    "metrics_interval_ops": 500,
+    "warmup_ops": 500,
+    "adaptation_enabled": false
+  }
+}

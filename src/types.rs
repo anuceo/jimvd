@@ -148,6 +148,7 @@ pub struct MetricsReport {
     pub row_ops: u64,
     pub nodes_touched_by_updates: u64,
     pub objects_updated: u64,
+    pub join_fallbacks: u64,
     pub factor_utilization: f64,
     pub uaf: f64,
     pub current_tick: u64,
