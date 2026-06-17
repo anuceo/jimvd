@@ -60,3 +60,13 @@ pub struct RunOptions {
     pub warmup_ops: usize,
     pub adaptation_enabled: bool,
 }
+
+impl QueryTemplate {
+    pub fn weight(&self) -> u32 {
+        match self {
+            QueryTemplate::Eq { weight, .. } => *weight,
+            QueryTemplate::And { weight, .. } => *weight,
+            QueryTemplate::Or { weight, .. } => *weight,
+        }
+    }
+}
