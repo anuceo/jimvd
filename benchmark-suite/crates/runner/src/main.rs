@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use data_generator::CorrelationConfig;
+use serde::Deserialize;
 use workload_generator::{Phase, WorkloadConfig};
 
 #[derive(Parser)]
@@ -31,12 +32,66 @@ enum Command {
     Full,
 }
 
-fn default_workload() -> WorkloadConfig {
-    WorkloadConfig {
-        read_ratio:       0.6,
-        write_ratio:      0.4,
-        join_ratio:       0.0,
-        total_operations: 10_000,
+#[derive(Deserialize, Default)]
+struct DatasetToml {
+    size: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+struct CorrelationToml {
+    role_department_bias:  Option<f64>,
+    region_clearance_bias: Option<f64>,
+    tenant_role_bias:      Option<f64>,
+}
+
+#[derive(Deserialize, Default)]
+struct WorkloadToml {
+    read_ratio:       Option<f64>,
+    write_ratio:      Option<f64>,
+    join_ratio:       Option<f64>,
+    total_operations: Option<usize>,
+}
+
+#[derive(Deserialize, Default)]
+struct BenchConfig {
+    dataset:     Option<DatasetToml>,
+    correlation: Option<CorrelationToml>,
+    workload:    Option<WorkloadToml>,
+}
+
+fn load_config(path: &str) -> BenchConfig {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| toml::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn make_correlation(ct: Option<CorrelationToml>) -> CorrelationConfig {
+    let def = CorrelationConfig::default();
+    match ct {
+        None => def,
+        Some(c) => CorrelationConfig {
+            role_department_bias:  c.role_department_bias.unwrap_or(def.role_department_bias),
+            region_clearance_bias: c.region_clearance_bias.unwrap_or(def.region_clearance_bias),
+            tenant_role_bias:      c.tenant_role_bias.unwrap_or(def.tenant_role_bias),
+        },
+    }
+}
+
+fn make_workload(wt: Option<WorkloadToml>, default_total: usize) -> WorkloadConfig {
+    match wt {
+        None => WorkloadConfig {
+            read_ratio:       0.6,
+            write_ratio:      0.4,
+            join_ratio:       0.0,
+            total_operations: default_total,
+        },
+        Some(w) => WorkloadConfig {
+            read_ratio:       w.read_ratio.unwrap_or(0.6),
+            write_ratio:      w.write_ratio.unwrap_or(0.4),
+            join_ratio:       w.join_ratio.unwrap_or(0.0),
+            total_operations: w.total_operations.unwrap_or(default_total),
+        },
     }
 }
 
@@ -48,15 +103,17 @@ fn main() -> Result<()> {
     match cli.command {
         Command::ScalingWall { max_scale } => {
             log::info!("Running ScalingWall, max_scale={}", max_scale);
+            let cfg = load_config("configs/iam_1m.toml");
+            let corr = make_correlation(cfg.correlation);
+            let wl = make_workload(cfg.workload, 10_000);
+            let scale = cfg.dataset.and_then(|d| d.size).unwrap_or(max_scale);
             let mut runner = jimvd_runner::JimvdRunner::new(3, 10_000);
-            let corr = CorrelationConfig::default();
-            let wl = default_workload();
             let results = benchmark_orchestrator::scaling_wall::run_scaling_wall(
                 &mut runner,
                 &corr,
                 &wl,
                 Phase::IAM,
-                max_scale,
+                scale,
             );
             let rows: Vec<(&str, usize, &metrics::Metrics)> = results
                 .iter()
@@ -91,10 +148,12 @@ fn main() -> Result<()> {
 
         Command::DriftSim { ops_per_phase } => {
             log::info!("Running DriftSim, ops_per_phase={}", ops_per_phase);
-            let corr = CorrelationConfig::default();
-            let users = data_generator::generate_users(10_000, &corr);
+            let cfg = load_config("configs/iam_1m.toml");
+            let corr = make_correlation(cfg.correlation);
+            let dataset_size = cfg.dataset.and_then(|d| d.size).unwrap_or(10_000);
+            let users = data_generator::generate_users(dataset_size, &corr);
+            let wl = make_workload(cfg.workload, ops_per_phase);
             let mut runner = jimvd_runner::JimvdRunner::new(3, 10_000);
-            let wl = default_workload();
             let results = benchmark_orchestrator::drift_simulator::run_drift_simulation(
                 &mut runner, &users, ops_per_phase, &wl,
             );
@@ -117,11 +176,13 @@ fn main() -> Result<()> {
 
         Command::JoinExplosion { orders } => {
             log::info!("Running JoinExplosion, orders={}", orders);
+            let cfg = load_config("configs/mixed_workload.toml");
+            let products = cfg.dataset.and_then(|d| d.size).unwrap_or(1000);
             let mut runner = jimvd_runner::JimvdRunner::new(3, 10_000);
             let results = benchmark_orchestrator::join_explosion::run_join_explosion(
                 &mut runner,
                 orders,
-                1000,
+                products,
                 benchmark_orchestrator::join_explosion::JOIN_FANOUTS,
             );
             let json_data: Vec<serde_json::Value> = results.iter().map(|r| {
@@ -143,11 +204,16 @@ fn main() -> Result<()> {
 
         Command::Evolution { total_ops } => {
             log::info!("Running Evolution, total_ops={}", total_ops);
-            let corr = CorrelationConfig::default();
-            let users = data_generator::generate_users(10_000, &corr);
+            let cfg = load_config("configs/mixed_workload.toml");
+            let corr = make_correlation(cfg.correlation);
+            let dataset_size = cfg.dataset.and_then(|d| d.size).unwrap_or(10_000);
+            let wt = cfg.workload;
+            let read_ratio  = wt.as_ref().and_then(|w| w.read_ratio).unwrap_or(0.6);
+            let write_ratio = wt.as_ref().and_then(|w| w.write_ratio).unwrap_or(0.4);
+            let users = data_generator::generate_users(dataset_size, &corr);
             let mut runner = jimvd_runner::JimvdRunner::new(3, 10_000);
             let snapshots = benchmark_orchestrator::evolution::run_long_term_evolution(
-                &mut runner, &users, total_ops, 1_000_000, 2_000_000, 0.6, 0.4,
+                &mut runner, &users, total_ops, 1_000_000, 2_000_000, read_ratio, write_ratio,
             );
             let evo_points: Vec<report_generator::EvolutionPoint> = snapshots
                 .iter()

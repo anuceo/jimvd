@@ -42,7 +42,7 @@ pub fn run_drift_simulation(
 
         let mut wl = WorkloadGenerator::new(workload_config.clone(), phase.clone(), users.len());
         let mut adaptation_latency_ops: Option<usize> = None;
-        let snapshot_interval = 100_000.min(ops_per_phase).max(1);
+        let snapshot_interval = (ops_per_phase / 5).max(1);
 
         for i in 0..ops_per_phase {
             let op = wl.next_operation();

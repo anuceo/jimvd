@@ -23,13 +23,18 @@ pub fn run_join_explosion(
         log::info!("JoinExplosion: fanout={}", fanout);
         runner.reset_metrics();
 
-        // Generate synthetic rows using the data generator (reuse User struct as rows)
         let total_rows = (orders * fanout).max(1);
         let config = data_generator::CorrelationConfig::default();
         let users = data_generator::generate_users(total_rows, &config);
 
         if let Err(e) = runner.load_data(&users) {
             log::error!("load_data failed at fanout {}: {}", fanout, e);
+            continue;
+        }
+
+        let perm_users = data_generator::generate_users(products.max(1), &config);
+        if let Err(e) = runner.load_table("permissions", &perm_users) {
+            log::error!("load_table permissions failed at fanout {}: {}", fanout, e);
             continue;
         }
 
@@ -45,9 +50,12 @@ pub fn run_join_explosion(
             }
         }
 
-        let _ = products; // suppress unused warning
         let metrics = runner.collect_metrics();
-        let fallback_rate = 0.0;
+        let fallback_rate = if metrics.join_queries > 0 {
+            metrics.join_fallbacks as f64 / metrics.join_queries as f64
+        } else {
+            0.0
+        };
 
         results.push(JoinResult {
             avg_items_per_order: fanout,

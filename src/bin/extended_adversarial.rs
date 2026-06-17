@@ -57,6 +57,7 @@ fn main() -> Result<()> {
                 "uaf": report.uaf,
                 "structural_factors": report.structural_factor_count,
                 "operational_factors": report.operational_factor_count,
+                "evicted_factors": report.evicted_factors,
             }));
         }
 

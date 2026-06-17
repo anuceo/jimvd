@@ -14,6 +14,8 @@ pub struct Metrics {
     pub factor_count:       usize,
     pub graph_nodes:        usize,
     pub memory_peak_bytes:  u64,
+    pub join_fallbacks:     u64,
+    pub join_queries:       u64,
 }
 
 /// Accumulates raw latency samples and computes percentiles.

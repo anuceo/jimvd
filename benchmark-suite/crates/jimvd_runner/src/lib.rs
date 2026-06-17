@@ -9,38 +9,50 @@ use std::sync::atomic::Ordering;
 use workload_generator::{FilterPredicate, Operation};
 
 pub struct JimvdRunner {
-    graph:         MultiTableGraph,
-    jmetrics:      JimMetrics,
-    uaf_tracker:   metrics::UafTracker,
-    latencies:     metrics::LatencyHistogram,
-    dataset_size:  usize,
-    next_delta_id: i64,
-    table_ready:   bool,
+    graph:                  MultiTableGraph,
+    jmetrics:               JimMetrics,
+    uaf_tracker:            metrics::UafTracker,
+    latencies:              metrics::LatencyHistogram,
+    dataset_size:           usize,
+    next_delta_id:          i64,
+    table_ready:            bool,
+    materialization_threshold: u64,
+    eviction_ticks:         u64,
+    next_eviction_tick:     u64,
+    join_queries:           u64,
 }
 
 impl JimvdRunner {
-    pub fn new(_materialization_threshold: usize, _eviction_ticks: u64) -> Self {
+    pub fn new(materialization_threshold: usize, eviction_ticks: u64) -> Self {
         JimvdRunner {
-            graph:         MultiTableGraph::new(),
-            jmetrics:      JimMetrics::new(),
-            uaf_tracker:   metrics::UafTracker::new(),
-            latencies:     metrics::LatencyHistogram::new(),
-            dataset_size:  0,
-            next_delta_id: 1,
-            table_ready:   false,
+            graph:                     MultiTableGraph::new(),
+            jmetrics:                  JimMetrics::new(),
+            uaf_tracker:               metrics::UafTracker::new(),
+            latencies:                 metrics::LatencyHistogram::new(),
+            dataset_size:              0,
+            next_delta_id:             1,
+            table_ready:               false,
+            materialization_threshold: materialization_threshold as u64,
+            eviction_ticks,
+            next_eviction_tick:        eviction_ticks,
+            join_queries:              0,
         }
     }
 
     fn ensure_table(&mut self) {
         if !self.table_ready {
-            self.graph.add_table("users".to_string(), FactorGraph::new());
+            let mut fg = FactorGraph::new();
+            fg.materialization_threshold = self.materialization_threshold;
+            self.graph.add_table("users".to_string(), fg);
             self.table_ready = true;
         }
     }
 
     fn ensure_named_table(&mut self, name: &str) {
         if !self.graph.tables.contains_key(name) {
-            self.graph.add_table(name.to_string(), FactorGraph::new());
+            let mut fg = FactorGraph::new();
+            fg.materialization_threshold = self.materialization_threshold;
+            self.graph.add_table(name.to_string(), fg);
         }
     }
 
@@ -74,6 +86,24 @@ impl JimvdRunner {
             ),
         }
     }
+
+    fn user_to_details(user: &User) -> serde_json::Value {
+        serde_json::json!({
+            "id":         user.id as u32,
+            "role":       role_name(user.role),
+            "region":     region_name(user.region),
+            "department": dept_name(user.department),
+            "clearance":  clearance_name(user.clearance),
+            "tenant":     user.tenant.to_string(),
+        })
+    }
+
+    fn maybe_evict(&mut self) {
+        if self.eviction_ticks > 0 && self.graph.max_tick() >= self.next_eviction_tick {
+            self.graph.evict_all(self.eviction_ticks);
+            self.next_eviction_tick = self.graph.max_tick() + self.eviction_ticks;
+        }
+    }
 }
 
 impl DatabaseRunner for JimvdRunner {
@@ -83,20 +113,10 @@ impl DatabaseRunner for JimvdRunner {
         self.ensure_table();
         self.dataset_size = users.len();
         for user in users {
-            let details = serde_json::json!({
-                "id":         user.id as u32,
-                "role":       role_name(user.role),
-                "region":     region_name(user.region),
-                "department": dept_name(user.department),
-                "clearance":  clearance_name(user.clearance),
-                "tenant":     user.tenant.to_string(),
-            });
+            let details = Self::user_to_details(user);
             let delta = self.make_delta(DeltaType::Insert, details);
             self.graph.apply_delta("users", &delta, &self.jmetrics);
         }
-        // Build structural factors over IAM attributes only (role/region/department).
-        // Clearance and tenant are intentionally left un-factorised so that Compliance,
-        // Tenant, and Security phases exercise the cold-start row-scan path.
         const IAM_ATTRS: &[&str] = &["role", "region", "department"];
         let seed: Vec<(u32, std::collections::HashMap<String, String>)> = self
             .graph
@@ -129,6 +149,17 @@ impl DatabaseRunner for JimvdRunner {
         Ok(())
     }
 
+    fn load_table(&mut self, table: &str, users: &[User]) -> Result<()> {
+        self.ensure_named_table(table);
+        for user in users {
+            let details = Self::user_to_details(user);
+            let mut delta = self.make_delta(DeltaType::Insert, details);
+            delta.table_name = table.to_string();
+            self.graph.apply_delta(table, &delta, &self.jmetrics);
+        }
+        Ok(())
+    }
+
     fn execute(&mut self, op: &Operation) -> Result<OpResult> {
         self.ensure_table();
         let before_nodes = self.jmetrics.nodes_touched_by_updates.load(Ordering::Relaxed);
@@ -156,14 +187,7 @@ impl DatabaseRunner for JimvdRunner {
                 let _ = self.graph.query_table("users", &filter, &self.jmetrics);
             }
             Operation::Insert { user } => {
-                let details = serde_json::json!({
-                    "id":         user.id as u32,
-                    "role":       role_name(user.role),
-                    "region":     region_name(user.region),
-                    "department": dept_name(user.department),
-                    "clearance":  clearance_name(user.clearance),
-                    "tenant":     user.tenant.to_string(),
-                });
+                let details = Self::user_to_details(user);
                 let delta = self.make_delta(DeltaType::Insert, details);
                 self.graph.apply_delta("users", &delta, &self.jmetrics);
             }
@@ -190,9 +214,9 @@ impl DatabaseRunner for JimvdRunner {
                 self.graph.apply_delta("users", &delta, &self.jmetrics);
             }
             Operation::Join { left_table, right_table, join_attribute } => {
-                // Ensure both tables exist before joining
                 self.ensure_named_table(left_table.as_str());
                 self.ensure_named_table(right_table.as_str());
+                self.join_queries += 1;
                 let _ = self.graph.factor_join(
                     left_table,
                     right_table,
@@ -203,6 +227,8 @@ impl DatabaseRunner for JimvdRunner {
                 );
             }
         }
+
+        self.maybe_evict();
 
         let latency = start.elapsed();
         self.latencies.record(latency);
@@ -218,7 +244,6 @@ impl DatabaseRunner for JimvdRunner {
 
     fn collect_metrics(&self) -> metrics::Metrics {
         let report = self.graph.gather_metrics(&self.jmetrics);
-        // Clone histogram so we can call percentile() (which sorts in place)
         let mut hist = self.latencies.clone();
         metrics::Metrics {
             p50_latency_us:     hist.percentile(50.0),
@@ -232,6 +257,8 @@ impl DatabaseRunner for JimvdRunner {
             factor_count:       report.structural_factor_count + report.operational_factor_count,
             graph_nodes:        report.structural_factor_count + report.operational_factor_count,
             memory_peak_bytes:  0,
+            join_fallbacks:     self.jmetrics.join_fallbacks.load(Ordering::Relaxed),
+            join_queries:       self.join_queries,
         }
     }
 
@@ -239,5 +266,6 @@ impl DatabaseRunner for JimvdRunner {
         self.jmetrics.reset();
         self.uaf_tracker.reset();
         self.latencies = metrics::LatencyHistogram::new();
+        self.join_queries = 0;
     }
 }

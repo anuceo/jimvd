@@ -47,6 +47,7 @@ pub fn run_long_term_evolution(
                 phases[phase_idx].clone(),
                 users.len(),
             );
+            runner.reset_metrics();
         }
 
         let op = wl.next_operation();
