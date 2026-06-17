@@ -1,5 +1,5 @@
 use anyhow::Result;
-use jimvd::benchmark::BenchmarkRunner;
+use jimvd::benchmark::{run_julia_script, BenchmarkRunner};
 use jimvd::workload::WorkloadConfig;
 use serde_json::Value;
 use std::fs;
@@ -78,5 +78,10 @@ fn main() -> Result<()> {
         "\nAdversarial test complete — {} snapshots written to adversarial_snapshots.json",
         all_snapshots.len()
     );
+
+    // Offline analysis — no-op if Julia is not installed.
+    run_julia_script("plot_metrics.jl",    "adversarial_snapshots.json");
+    run_julia_script("halflife_report.jl", "adversarial_snapshots.json");
+
     Ok(())
 }

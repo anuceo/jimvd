@@ -262,3 +262,23 @@ impl BenchmarkRunner {
         println!("╚══════════════════════════════════════╝");
     }
 }
+
+/// Invoke a Julia analysis script with the given snapshot file.
+/// Gracefully skips if Julia is not installed rather than panicking.
+pub fn run_julia_script(script: &str, snapshot_file: &str) {
+    let result = std::process::Command::new("julia")
+        .args(["--project=julia", &format!("julia/{}", script), snapshot_file])
+        .status();
+
+    match result {
+        Ok(s) if s.success() => {}
+        Ok(s) => eprintln!("[Julia] {} exited with {}", script, s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "[Julia] not installed — skipping {}. Run scripts/setup_julia.sh to install.",
+                script
+            );
+        }
+        Err(e) => eprintln!("[Julia] failed to launch {}: {}", script, e),
+    }
+}
