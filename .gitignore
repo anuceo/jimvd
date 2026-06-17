@@ -6,5 +6,6 @@ duckdb_report.json
 *_report.json
 scaling_time.txt
 /data/
+data*/
 *_metrics.png
 *_lifetimes.png
