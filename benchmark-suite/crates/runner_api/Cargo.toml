@@ -1,0 +1,11 @@
+[package]
+name = "runner_api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+metrics            = { path = "../metrics" }
+workload_generator = { path = "../workload_generator" }
+data_generator     = { path = "../data_generator" }
+anyhow             = { workspace = true }
+serde              = { workspace = true }

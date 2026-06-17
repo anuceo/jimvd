@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "crates/metrics",
+    "crates/data_generator",
+    "crates/workload_generator",
+    "crates/runner_api",
+    "crates/jimvd_runner",
+    "crates/postgres_runner",
+    "crates/duckdb_runner",
+    "crates/benchmark_orchestrator",
+    "crates/report_generator",
+    "crates/validation",
+    "crates/runner",
+]
+resolver = "2"
+
+[workspace.dependencies]
+serde       = { version = "1",     features = ["derive"] }
+serde_json  = "1"
+toml        = "0.8"
+rand        = "0.10"
+csv         = "1"
+anyhow      = "1"
+log         = "0.4"
+env_logger  = "0.11"
+clap        = { version = "4",     features = ["derive"] }
+plotters    = "0.3"

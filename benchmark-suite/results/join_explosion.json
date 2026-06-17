@@ -1,0 +1,37 @@
+[
+  {
+    "fallback_rate": 0.0,
+    "fanout": 1,
+    "p50_us": 9,
+    "p99_us": 17,
+    "runner": "jimvd"
+  },
+  {
+    "fallback_rate": 0.0,
+    "fanout": 5,
+    "p50_us": 48,
+    "p99_us": 65,
+    "runner": "jimvd"
+  },
+  {
+    "fallback_rate": 0.0,
+    "fanout": 20,
+    "p50_us": 236,
+    "p99_us": 306,
+    "runner": "jimvd"
+  },
+  {
+    "fallback_rate": 0.0,
+    "fanout": 100,
+    "p50_us": 3378,
+    "p99_us": 4424,
+    "runner": "jimvd"
+  },
+  {
+    "fallback_rate": 0.0,
+    "fanout": 500,
+    "p50_us": 43253,
+    "p99_us": 49217,
+    "runner": "jimvd"
+  }
+]

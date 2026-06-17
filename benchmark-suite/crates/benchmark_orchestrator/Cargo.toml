@@ -1,0 +1,14 @@
+[package]
+name = "benchmark_orchestrator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runner_api         = { path = "../runner_api" }
+metrics            = { path = "../metrics" }
+data_generator     = { path = "../data_generator" }
+workload_generator = { path = "../workload_generator" }
+report_generator   = { path = "../report_generator" }
+serde              = { workspace = true }
+anyhow             = { workspace = true }
+log                = { workspace = true }

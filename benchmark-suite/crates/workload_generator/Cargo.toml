@@ -1,0 +1,9 @@
+[package]
+name = "workload_generator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde          = { workspace = true }
+rand           = { workspace = true }
+data_generator = { path = "../data_generator" }

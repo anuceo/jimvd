@@ -1,0 +1,12 @@
+[package]
+name = "report_generator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+metrics    = { path = "../metrics" }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+csv        = { workspace = true }
+anyhow     = { workspace = true }
+plotters   = { workspace = true }

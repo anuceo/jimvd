@@ -1,0 +1,23 @@
+[package]
+name = "runner"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "runner"
+path = "src/main.rs"
+
+[dependencies]
+benchmark_orchestrator = { path = "../benchmark_orchestrator" }
+report_generator       = { path = "../report_generator" }
+jimvd_runner           = { path = "../jimvd_runner" }
+data_generator         = { path = "../data_generator" }
+workload_generator     = { path = "../workload_generator" }
+runner_api             = { path = "../runner_api" }
+metrics                = { path = "../metrics" }
+validation             = { path = "../validation" }
+clap                   = { workspace = true }
+anyhow                 = { workspace = true }
+log                    = { workspace = true }
+env_logger             = { workspace = true }
+serde_json             = { workspace = true }

@@ -1,0 +1,20 @@
+[
+  {
+    "factor_utilization": 0.5,
+    "p50_us": 68,
+    "p95_us": 120,
+    "p99_us": 138,
+    "runner": "jimvd",
+    "scale": 1000,
+    "uaf": 0.0
+  },
+  {
+    "factor_utilization": 0.5,
+    "p50_us": 2420,
+    "p95_us": 4082,
+    "p99_us": 4426,
+    "runner": "jimvd",
+    "scale": 10000,
+    "uaf": 0.0
+  }
+]

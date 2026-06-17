@@ -1,0 +1,14 @@
+[dataset]
+size = 10000000
+
+[correlation]
+role_department_bias = 0.7
+region_clearance_bias = 0.5
+tenant_role_bias = 0.8
+
+[workload]
+read_ratio = 0.6
+write_ratio = 0.4
+join_ratio = 0.0
+total_operations = 100000
+phase = "IAM"

@@ -1,0 +1,14 @@
+[package]
+name = "jimvd_runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runner_api         = { path = "../runner_api" }
+data_generator     = { path = "../data_generator" }
+workload_generator = { path = "../workload_generator" }
+metrics            = { path = "../metrics" }
+anyhow             = { workspace = true }
+log                = { workspace = true }
+serde_json         = { workspace = true }
+jimvd              = { path = "../../../" }

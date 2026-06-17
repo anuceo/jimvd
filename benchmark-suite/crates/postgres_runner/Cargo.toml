@@ -1,0 +1,17 @@
+[package]
+name = "postgres_runner"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default  = []
+postgres = ["dep:postgres"]
+
+[dependencies]
+runner_api         = { path = "../runner_api" }
+data_generator     = { path = "../data_generator" }
+workload_generator = { path = "../workload_generator" }
+metrics            = { path = "../metrics" }
+anyhow             = { workspace = true }
+log                = { workspace = true }
+postgres = { version = "0.19", optional = true }
