@@ -6,7 +6,6 @@ use std::fs;
 
 #[derive(Debug, Deserialize)]
 struct ExtendedConfig {
-    workload_name: String,
     phases: Vec<PhaseConfig>,
     #[serde(default = "default_threshold")]
     adaptation_threshold: f64,
