@@ -33,3 +33,7 @@ path = "src/bin/join_test.rs"
 [[bin]]
 name = "many_to_many_test"
 path = "src/bin/many_to_many_test.rs"
+
+[[bin]]
+name = "high_write_test"
+path = "src/bin/high_write_test.rs"

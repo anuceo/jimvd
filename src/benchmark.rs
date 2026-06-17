@@ -30,6 +30,8 @@ pub struct BenchmarkRunner {
     next_eviction_tick: u64,
     /// Per-interval snapshots collected during run(). Cleared by change_workload().
     pub snapshots: Vec<(usize, MetricsReport)>,
+    /// Per-delta propagation fanout (nodes touched per write operation).
+    pub fanout_log: Vec<u64>,
 }
 
 impl BenchmarkRunner {
@@ -43,6 +45,7 @@ impl BenchmarkRunner {
             next_delta_id: 1,
             next_eviction_tick,
             snapshots: Vec::new(),
+            fanout_log: Vec::new(),
         }
     }
 
@@ -355,8 +358,11 @@ impl BenchmarkRunner {
         };
         self.next_delta_id += 1;
 
+        let before = self.metrics.nodes_touched_by_updates.load(std::sync::atomic::Ordering::Relaxed);
         let m = &self.metrics;
         self.multi.table_mut(&table_name).apply_delta(&delta, m);
+        let after = self.metrics.nodes_touched_by_updates.load(std::sync::atomic::Ordering::Relaxed);
+        self.fanout_log.push(after - before);
     }
 
     pub fn print_summary(&self) {
