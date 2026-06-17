@@ -1,4 +1,5 @@
 /target/
 /jimvd/target/
 adversarial_snapshots.json
-metrics_plot.png
+*_metrics.png
+*_lifetimes.png

@@ -1,41 +1,69 @@
-using JSON
+using JSON, Plots, Statistics
 
-isempty(ARGS) && error("Usage: julia --project=julia julia/halflife_report.jl <snapshots.json>")
-snapshots = JSON.parsefile(ARGS[1])
-isempty(snapshots) && error("No snapshots in $(ARGS[1])")
+# Read snapshot file path from command line
+if length(ARGS) < 1
+    error("Usage: julia halflife_report.jl <snapshots.json>")
+end
+filename = ARGS[1]
 
-# The final snapshot has the most complete evicted-factor list.
-evicted_all = snapshots[end]["evicted_factors"]
+# Parse the JSON file
+data = JSON.parsefile(filename)
 
-# Only operational factors that were actually evicted (not just listed as active elsewhere).
-operational = [f for f in evicted_all
-               if !f["is_structural"] && f["evicted_at_tick"] !== nothing]
-lifetimes   = [f["evicted_at_tick"] - f["created_at_tick"] for f in operational]
+# Collect all evicted factors from all snapshots (they should be unique across phases)
+# The final snapshot contains the complete list of evicted factors.
+# We'll gather from the very last snapshot.
+last_snapshot = data[end]
+evicted_factors = last_snapshot["evicted_factors"]
 
-div_line = "╠══════════════════════════════════════╣"
-
-println("\n╔══════════════════════════════════════╗")
-println("║        Factor Half-Life Report       ║")
-println(div_line)
-@printf "║  Input file       : %-17s║\n" basename(ARGS[1])
-@printf "║  Total evicted    : %-17d║\n" length(evicted_all)
-@printf "║  Operational      : %-17d║\n" length(operational)
-
-if !isempty(lifetimes)
-    sort!(lifetimes)
-    n      = length(lifetimes)
-    mean_l = sum(lifetimes) / n
-    med_l  = lifetimes[n ÷ 2 + 1]
-    p25    = lifetimes[max(1, n ÷ 4)]
-    p75    = lifetimes[min(n, 3 * n ÷ 4)]
-
-    println(div_line)
-    @printf "║  Mean lifetime    : %-12.1f ticks║\n" mean_l
-    @printf "║  Median lifetime  : %-12.1f ticks║\n" Float64(med_l)
-    @printf "║  P25              : %-12d ticks║\n" p25
-    @printf "║  P75              : %-12d ticks║\n" p75
-    @printf "║  Min              : %-12d ticks║\n" lifetimes[1]
-    @printf "║  Max              : %-12d ticks║\n" lifetimes[end]
+if isempty(evicted_factors)
+    println("No evicted factors found in the final snapshot.")
+    exit()
 end
 
-println("╚══════════════════════════════════════╝\n")
+# Extract lifetimes (ticks from creation to eviction)
+lifetimes = []
+for f in evicted_factors
+    created = f["created_at_tick"]
+    evicted = f["evicted_at_tick"]
+    if evicted !== nothing && created !== nothing
+        push!(lifetimes, evicted - created)
+    end
+end
+
+if isempty(lifetimes)
+    println("No lifetime data available (all evicted factors have null timestamps).")
+    exit()
+end
+
+# Compute statistics
+half_life  = median(lifetimes)
+mean_life  = mean(lifetimes)
+p25        = quantile(lifetimes, 0.25)
+p75        = quantile(lifetimes, 0.75)
+
+# Ephemeral ratio: factors that lived less than 10 ticks
+ephemeral_threshold = 10
+ephemeral_count = count(lf -> lf <= ephemeral_threshold, lifetimes)
+ephemeral_ratio = ephemeral_count / length(lifetimes) * 100
+
+# Print report
+println("\n=== Factor Half-Life Report ===")
+println("Number of evicted factors: ",          length(evicted_factors))
+println("Factors with complete lifecycle: ",     length(lifetimes))
+println("Half-life (median lifetime): ",         half_life, " ticks")
+println("Mean lifetime: ",                       round(mean_life, digits=1), " ticks")
+println("25th percentile: ",                     p25, " ticks")
+println("75th percentile: ",                     p75, " ticks")
+println("Ephemeral ratio (lived ≤ $ephemeral_threshold ticks): ",
+        round(ephemeral_ratio, digits=1), "%")
+
+# Plot histogram
+hist = histogram(lifetimes, bins=20, legend=false,
+                 xlabel="Lifetime (ticks)", ylabel="Frequency",
+                 title="Factor Lifetime Distribution")
+# Add median line
+vline!([half_life], color=:red, linestyle=:dash, label="Half-life")
+
+output_png = replace(filename, r"\.json$" => "_lifetimes.png")
+savefig(hist, output_png)
+println("Lifetime histogram saved to $output_png")

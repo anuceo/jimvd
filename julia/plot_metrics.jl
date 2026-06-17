@@ -1,44 +1,69 @@
-using JSON
-using Plots
-gr()
+using JSON, Plots, Statistics
 
-isempty(ARGS) && error("Usage: julia --project=julia julia/plot_metrics.jl <snapshots.json>")
-snapshots = JSON.parsefile(ARGS[1])
-isempty(snapshots) && error("No snapshots in $(ARGS[1])")
+# Read snapshot file path from command line
+if length(ARGS) < 1
+    error("Usage: julia plot_metrics.jl <snapshots.json>")
+end
+filename = ARGS[1]
 
-ops    = [s["operation"]            for s in snapshots]
-util   = [s["factor_utilization"] * 100.0 for s in snapshots]
-uaf    = [s["uaf"]                  for s in snapshots]
-s_cnt  = [s["structural_factors"]   for s in snapshots]
-o_cnt  = [s["operational_factors"]  for s in snapshots]
-phases = [s["phase"]                for s in snapshots]
+# Parse the JSON file
+data = JSON.parsefile(filename)
 
-# First snapshot that belongs to Phase B marks the transition.
-b_idx        = findfirst(==("B"), phases)
-transition_op = b_idx !== nothing ? ops[b_idx] : nothing
+# Extract arrays of metrics, grouped by phase
+phases        = [d["phase"]               for d in data]
+ops           = [d["operation"]           for d in data]
+factor_util   = [d["factor_utilization"]  for d in data]
+uaf_vals      = [d["uaf"]                for d in data]
+struct_factors = [d["structural_factors"] for d in data]
+oper_factors  = [d["operational_factors"] for d in data]
 
-function mark_transition!(p)
-    transition_op !== nothing &&
-        vline!(p, [transition_op], label="Phase B start", color=:crimson, ls=:dash, lw=1.5)
+# Find transition point (first Phase B snapshot)
+transition_op = nothing
+for i in 2:length(phases)
+    if phases[i] == "B" && phases[i-1] == "A"
+        transition_op = ops[i]
+        break
+    end
 end
 
-p1 = plot(ops, util,
-    label="Utilization", lw=2, color=:steelblue,
-    ylabel="Utilization (%)", ylims=(0, 105), legend=:bottomright,
-    title="Adversarial Workload Shift — Factor Metrics")
-mark_transition!(p1)
+# Plot 1: Factor Utilization over time
+p1 = plot(ops, factor_util .* 100, label="Factor Utilization (%)",
+          xlabel="Operation", ylabel="%", title="Factor Utilization",
+          legend=:bottomright)
+if transition_op !== nothing
+    vline!([transition_op], label="Phase Shift", linestyle=:dash, color=:red)
+end
 
-p2 = plot(ops, uaf,
-    label="UAF", lw=2, color=:darkorange,
-    ylabel="Update Amplification Factor", legend=:topright)
-mark_transition!(p2)
+# Plot 2: UAF over time
+p2 = plot(ops, uaf_vals, label="UAF", xlabel="Operation",
+          ylabel="UAF", title="Update Amplification Factor")
+if transition_op !== nothing
+    vline!([transition_op], label="Phase Shift", linestyle=:dash, color=:red)
+end
 
-p3 = plot(ops, s_cnt,
-    label="Structural",  lw=2, color=:seagreen,
-    ylabel="Factor Count", xlabel="Operation", legend=:topleft)
-plot!(p3, ops, o_cnt, label="Operational", lw=2, color=:mediumpurple)
-mark_transition!(p3)
+# Plot 3: Factor counts
+p3 = plot(ops, struct_factors, label="Structural", xlabel="Operation",
+          ylabel="Count", title="Factor Counts", color=:blue)
+plot!(ops, oper_factors, label="Operational", color=:orange)
+if transition_op !== nothing
+    vline!([transition_op], label="Phase Shift", linestyle=:dash, color=:red)
+end
 
-fig = plot(p1, p2, p3, layout=(3, 1), size=(900, 950))
-savefig(fig, "metrics_plot.png")
-println("Saved → metrics_plot.png")
+# Combine into a single figure
+fig = plot(p1, p2, p3, layout=(3, 1), size=(800, 900))
+
+# Save — derive output name from input
+output_png = replace(filename, r"\.json$" => "_metrics.png")
+savefig(fig, output_png)
+println("Plot saved to $output_png")
+
+# Summary statistics
+println("\n=== Metrics Summary ===")
+println("Number of snapshots: ", length(data))
+if transition_op !== nothing
+    println("Phase shift at operation: ", transition_op)
+end
+println("Mean Factor Utilization: ",   round(mean(factor_util) * 100, digits=2), "%")
+println("Median Factor Utilization: ", round(median(factor_util) * 100, digits=2), "%")
+println("Max UAF: ",  round(maximum(uaf_vals), digits=2))
+println("Mean UAF: ", round(mean(uaf_vals), digits=2))
