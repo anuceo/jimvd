@@ -512,11 +512,19 @@ fn factor_is_satisfied_by(factor: &Factor, object_props: &HashMap<String, String
 
 pub struct MultiTableGraph {
     pub tables: HashMap<String, FactorGraph>,
+    /// Global tick: incremented by apply_delta, query_table, and factor_join.
+    pub current_tick: u64,
+    /// Globally collected eviction records (aggregated from per-table evictions).
+    pub completed_lifecycles: Vec<FactorLifecycle>,
 }
 
 impl MultiTableGraph {
     pub fn new() -> Self {
-        MultiTableGraph { tables: HashMap::new() }
+        MultiTableGraph {
+            tables: HashMap::new(),
+            current_tick: 0,
+            completed_lifecycles: Vec::new(),
+        }
     }
 
     pub fn add_table(&mut self, name: String, graph: FactorGraph) {
@@ -531,14 +539,89 @@ impl MultiTableGraph {
         self.tables.get_mut(name).unwrap_or_else(|| panic!("table '{}' not found", name))
     }
 
+    /// The effective global tick: max of the explicit tick and all per-table ticks.
     pub fn max_tick(&self) -> u64 {
-        self.tables.values().map(|g| g.current_tick).max().unwrap_or(0)
+        let per_table = self.tables.values().map(|g| g.current_tick).max().unwrap_or(0);
+        self.current_tick.max(per_table)
     }
 
+    /// Advance the global tick and apply a delta to a specific table.
+    pub fn apply_delta_to(&mut self, table: &str, delta: &Delta, metrics: &Metrics) {
+        self.current_tick += 1;
+        self.table_mut(table).apply_delta(delta, metrics);
+    }
+
+    /// Run a single-table query via the factor-native path and advance the global tick.
+    pub fn query_table(&mut self, table: &str, filter: &QueryFilter, metrics: &Metrics) -> HashSet<ObjectId> {
+        self.current_tick += 1;
+        self.table_mut(table).query_with_fallback(filter, metrics)
+    }
+
+    /// Evict stale operational factors from every table, collecting their lifecycle records.
     pub fn evict_all(&mut self, ticks_threshold: u64) {
         for graph in self.tables.values_mut() {
             graph.evict_operational_factors(ticks_threshold);
+            // Harvest newly completed lifecycles into the global list.
+            self.completed_lifecycles.extend(graph.completed_lifecycles.drain(..));
         }
+    }
+
+    /// Evaluate a slice of filters against a single table, returning the matching
+    /// object IDs and whether any row-level fallback was required.
+    pub fn eval_table_filter(
+        &self,
+        table: &str,
+        filters: &[QueryFilter],
+        metrics: &Metrics,
+    ) -> (HashSet<ObjectId>, bool) {
+        let tg = self.table(table);
+        if filters.is_empty() {
+            return (tg.objects.keys().cloned().collect(), false);
+        }
+        let mut result: HashSet<ObjectId> = tg.objects.keys().cloned().collect();
+        let mut used_rows = false;
+
+        for filter in filters {
+            match filter {
+                QueryFilter::Eq { attribute, value } => {
+                    let atom = format!("{}={}", attribute, value);
+                    if let Some(fids) = tg.bpi.get(&atom) {
+                        let mut matches: HashSet<ObjectId> = HashSet::new();
+                        for fid in fids {
+                            if let Some(factor) = tg.factors.get(fid) {
+                                matches.extend(&factor.extent);
+                            }
+                        }
+                        result = result.intersection(&matches).cloned().collect();
+                    } else {
+                        result = result.into_iter().filter(|id| {
+                            tg.objects.get(id)
+                                .and_then(|props| props.get(attribute))
+                                .map(|v| v == value)
+                                .unwrap_or(false)
+                        }).collect();
+                        used_rows = true;
+                    }
+                }
+                QueryFilter::And(sub) => {
+                    for sub_f in sub {
+                        let (sub_res, sub_used) = self.eval_table_filter(table, &[sub_f.clone()], metrics);
+                        result = result.intersection(&sub_res).cloned().collect();
+                        used_rows |= sub_used;
+                    }
+                }
+                QueryFilter::Or(sub) => {
+                    let mut union_res: HashSet<ObjectId> = HashSet::new();
+                    for sub_f in sub {
+                        let (sub_res, sub_used) = self.eval_table_filter(table, &[sub_f.clone()], metrics);
+                        union_res.extend(sub_res);
+                        used_rows |= sub_used;
+                    }
+                    result = result.intersection(&union_res).cloned().collect();
+                }
+            }
+        }
+        (result, used_rows)
     }
 
     /// Factor-level equi-join between two tables on a shared attribute value.
@@ -555,28 +638,12 @@ impl MultiTableGraph {
         right_filters: &[QueryFilter],
         metrics: &Metrics,
     ) -> (HashSet<(ObjectId, ObjectId)>, bool) {
+        let (left_universe, left_row)   = self.eval_table_filter(left_table,  left_filters,  metrics);
+        let (right_universe, right_row) = self.eval_table_filter(right_table, right_filters, metrics);
+        let used_rows = left_row || right_row;
+
         let left_graph  = self.table(left_table);
         let right_graph = self.table(right_table);
-
-        // Evaluate pre-filters to narrow each side's candidate set.
-        let left_universe: HashSet<ObjectId> = if left_filters.is_empty() {
-            left_graph.objects.keys().cloned().collect()
-        } else {
-            let sets: Vec<HashSet<ObjectId>> = left_filters.iter()
-                .map(|f| left_graph.eval_filter_with_fallback(f).0)
-                .collect();
-            intersect_all(sets)
-        };
-
-        let right_universe: HashSet<ObjectId> = if right_filters.is_empty() {
-            right_graph.objects.keys().cloned().collect()
-        } else {
-            let sets: Vec<HashSet<ObjectId>> = right_filters.iter()
-                .map(|f| right_graph.eval_filter_with_fallback(f).0)
-                .collect();
-            intersect_all(sets)
-        };
-
         let join_prefix = format!("{}=", join_attr);
 
         // Collect factors from each side that carry the join attribute in their intent.
@@ -641,14 +708,15 @@ impl MultiTableGraph {
 
         metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
         metrics.total_queries.fetch_add(1, Ordering::Relaxed);
-        (result, false)
+        (result, used_rows)
     }
 
     pub fn gather_metrics(&self, metrics: &Metrics) -> MetricsReport {
-        let mut structural = 0usize;
+        let mut structural  = 0usize;
         let mut operational = 0usize;
         let mut active_lcs: Vec<FactorLifecycle> = Vec::new();
-        let mut evicted_lcs: Vec<FactorLifecycle> = Vec::new();
+        // Evicted = global list + anything still in per-table lists.
+        let mut evicted_lcs: Vec<FactorLifecycle> = self.completed_lifecycles.clone();
 
         for graph in self.tables.values() {
             structural  += graph.factors.values().filter(|f|  f.is_structural).count();
@@ -659,6 +727,7 @@ impl MultiTableGraph {
 
         active_lcs.sort_by_key(|lc| lc.factor_id);
         evicted_lcs.sort_by_key(|lc| lc.factor_id);
+        evicted_lcs.dedup_by_key(|lc| lc.factor_id);
 
         MetricsReport {
             total_queries: metrics.total_queries.load(Ordering::Relaxed),
@@ -675,12 +744,6 @@ impl MultiTableGraph {
             evicted_factors: evicted_lcs,
         }
     }
-}
-
-fn intersect_all(sets: Vec<HashSet<ObjectId>>) -> HashSet<ObjectId> {
-    let mut iter = sets.into_iter();
-    let first = iter.next().unwrap_or_default();
-    iter.fold(first, |acc, s| acc.intersection(&s).cloned().collect())
 }
 
 // -----------------------------------------------------------------

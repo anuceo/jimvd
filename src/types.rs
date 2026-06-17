@@ -64,6 +64,22 @@ pub enum QueryFilter {
     Or(Vec<QueryFilter>),
 }
 
+/// A query that targets either a single table or joins two tables in factor space.
+#[derive(Debug, Clone)]
+pub enum Query {
+    Filter {
+        table: String,
+        filter: QueryFilter,
+    },
+    Join {
+        left_table:      String,
+        right_table:     String,
+        join_attribute:  String,
+        left_filters:    Vec<QueryFilter>,
+        right_filters:   Vec<QueryFilter>,
+    },
+}
+
 /// Codomain definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Codomain {
