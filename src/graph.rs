@@ -13,6 +13,11 @@ pub struct FactorGraph {
     pub factors: HashMap<u64, Factor>,
     pub objects: HashMap<ObjectId, HashMap<String, String>>,
 
+    /// Attributes that are continuous (high-cardinality integer ranges). These
+    /// are deliberately not factorised, so equality/range queries against them
+    /// fall back to row scans instead of factor lookups.
+    pub continuous_attributes: HashSet<String>,
+
     // adaptive materialisation
     pub conjunction_hits: HashMap<String, u64>,
     pub factor_last_access: HashMap<u64, u64>,
@@ -31,6 +36,7 @@ impl FactorGraph {
             bpi: HashMap::new(),
             factors: HashMap::new(),
             objects: HashMap::new(),
+            continuous_attributes: HashSet::new(),
             conjunction_hits: HashMap::new(),
             factor_last_access: HashMap::new(),
             current_tick: 0,
@@ -123,8 +129,8 @@ impl FactorGraph {
                         if !factor_mut.extent.contains(&obj_id) && factor_is_satisfied_by(factor_mut, &props) {
                             factor_mut.extent.push(obj_id);
                             self.boi.entry(obj_id).or_default().insert(fid);
-                            metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                            metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                             self.record_factor_access(fid);
                         }
                     }
@@ -155,8 +161,8 @@ impl FactorGraph {
                                 if let Some(boi_set) = self.boi.get_mut(&obj_id) {
                                     boi_set.remove(&fid);
                                 }
-                                metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                                metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                                metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                                metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                                 self.record_factor_access(fid);
                             }
                         }
@@ -173,8 +179,8 @@ impl FactorGraph {
                         if !factor.extent.contains(&obj_id) && factor_is_satisfied_by(factor, &new_props) {
                             factor.extent.push(obj_id);
                             self.boi.entry(obj_id).or_default().insert(fid);
-                            metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                            metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                             self.record_factor_access(fid);
                         }
                     }
@@ -193,8 +199,8 @@ impl FactorGraph {
             for fid in factor_ids {
                 if let Some(factor) = self.factors.get_mut(&fid) {
                     factor.extent.retain(|id| *id != obj_id);
-                    metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                    metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                    metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                    metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                     self.record_factor_access(fid);
                 }
             }
@@ -211,8 +217,7 @@ impl FactorGraph {
     pub fn query(&mut self, filter: &QueryFilter, metrics: &Metrics) -> HashSet<ObjectId> {
         self.current_tick += 1;
 
-        let result = self.eval_filter(filter);
-        metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
+        let result = self.eval_filter(filter, metrics);
         metrics.total_queries.fetch_add(1, Ordering::Relaxed);
 
         self.record_factor_access_for_filter(filter);
@@ -224,9 +229,13 @@ impl FactorGraph {
         result
     }
 
-    fn eval_filter(&self, filter: &QueryFilter) -> HashSet<ObjectId> {
+    fn eval_filter(&self, filter: &QueryFilter, metrics: &Metrics) -> HashSet<ObjectId> {
         match filter {
             QueryFilter::Eq { attribute, value } => {
+                // Continuous (unfactorised) attributes fall back to a row scan.
+                if self.continuous_attributes.contains(attribute) {
+                    return self.row_scan_eq(attribute, value, metrics);
+                }
                 let atom = format!("{}={}", attribute, value);
                 let factor_ids = self.bpi.get(&atom).cloned().unwrap_or_default();
                 let mut result = HashSet::new();
@@ -235,14 +244,15 @@ impl FactorGraph {
                         result.extend(&factor.extent);
                     }
                 }
+                metrics.query_factor_ops.fetch_add(1, Ordering::Relaxed);
                 result
             }
             QueryFilter::And(sub_filters) => {
                 let mut iter = sub_filters.iter();
                 if let Some(first) = iter.next() {
-                    let mut result = self.eval_filter(first);
+                    let mut result = self.eval_filter(first, metrics);
                     for f in iter {
-                        result = result.intersection(&self.eval_filter(f)).cloned().collect();
+                        result = result.intersection(&self.eval_filter(f, metrics)).cloned().collect();
                     }
                     result
                 } else {
@@ -252,11 +262,24 @@ impl FactorGraph {
             QueryFilter::Or(sub_filters) => {
                 let mut result = HashSet::new();
                 for f in sub_filters {
-                    result.extend(&self.eval_filter(f));
+                    result.extend(&self.eval_filter(f, metrics));
                 }
                 result
             }
         }
+    }
+
+    /// Row-scan fallback for unfactorised (continuous) attributes. Counts a row
+    /// operation because it must touch base objects rather than factor space.
+    fn row_scan_eq(&self, attribute: &str, value: &str, metrics: &Metrics) -> HashSet<ObjectId> {
+        metrics.row_ops.fetch_add(1, Ordering::Relaxed);
+        let mut result = HashSet::new();
+        for (oid, props) in &self.objects {
+            if props.get(attribute).map(|v| v.as_str()) == Some(value) {
+                result.insert(*oid);
+            }
+        }
+        result
     }
 
     fn record_factor_access_for_filter(&mut self, filter: &QueryFilter) {
@@ -398,18 +421,46 @@ impl FactorGraph {
 
         MetricsReport {
             total_queries: metrics.total_queries.load(Ordering::Relaxed),
-            factor_ops: metrics.factor_ops.load(Ordering::Relaxed),
+            query_factor_ops: metrics.query_factor_ops.load(Ordering::Relaxed),
+            write_factor_ops: metrics.write_factor_ops.load(Ordering::Relaxed),
             row_ops: metrics.row_ops.load(Ordering::Relaxed),
-            nodes_touched_by_updates: metrics.nodes_touched_by_updates.load(Ordering::Relaxed),
+            write_propagation_nodes: metrics.write_propagation_nodes.load(Ordering::Relaxed),
             objects_updated: metrics.objects_updated.load(Ordering::Relaxed),
             factor_utilization: metrics.factor_utilization(),
+            query_factor_utilization: metrics.query_factor_utilization(),
             uaf: metrics.uaf(),
             current_tick: self.current_tick,
             structural_factor_count: structural_count,
             operational_factor_count: operational_count,
+            memory_bytes: crate::metrics::get_current_memory_usage(),
+            storage_bytes: self.estimate_storage_bytes(),
             active_factors: active_lifecycles,
             evicted_factors: evicted,
         }
+    }
+
+    /// Estimate the logical storage footprint of the factor store: the bytes of
+    /// every factor's extent (object ids) and intent (property atoms), plus the
+    /// BOI and BPI inverted-index overhead.
+    pub fn estimate_storage_bytes(&self) -> u64 {
+        use std::mem::size_of;
+        let mut total: u64 = 0;
+
+        for f in self.factors.values() {
+            total += (f.extent.len() * size_of::<ObjectId>()) as u64;
+            for atom in &f.intent {
+                total += atom.len() as u64;
+            }
+        }
+        // BOI: ObjectId -> set of factor ids
+        for set in self.boi.values() {
+            total += (size_of::<ObjectId>() + set.len() * size_of::<u64>()) as u64;
+        }
+        // BPI: property atom -> set of factor ids
+        for (atom, set) in &self.bpi {
+            total += (atom.len() + set.len() * size_of::<u64>()) as u64;
+        }
+        total
     }
 }
 

@@ -1,0 +1,52 @@
+{
+  "workload_name": "iam_advanced",
+  "description": "IAM workload exercising skewed weights, NULLs, a continuous attribute, query hot-spots, and per-attribute mutation weights. All optional fields default to the legacy uniform/no-NULL/no-continuous behaviour when omitted.",
+  "rng_seed": 42,
+  "tables": {
+    "employees": {
+      "attributes": {
+        "Role": ["Admin", "Engineer", "Manager", "Viewer"],
+        "Region": ["US", "EU", "APAC"],
+        "Department": ["Engineering", "Sales", "HR", "Finance"]
+      },
+      "weights": {
+        "Role": [0.6, 0.25, 0.1, 0.05]
+      },
+      "null_probability": {
+        "Department": 0.1
+      },
+      "continuous": {
+        "Age": { "min": 18, "max": 65 }
+      },
+      "initial_objects": 2000,
+      "correlation_hint": "high"
+    }
+  },
+  "query_mix": [
+    {
+      "type": "eq",
+      "weight": 40,
+      "attribute": "Role",
+      "values": ["Admin", "Engineer", "Manager", "Viewer"],
+      "hot_values": [
+        { "value": "Admin", "probability": 0.7 }
+      ]
+    },
+    { "type": "and", "weight": 25, "attributes": ["Role", "Region"] },
+    { "type": "eq", "weight": 25, "attribute": "Age", "values": ["21", "30", "40", "50", "60"] },
+    { "type": "or", "weight": 10, "attributes": ["Role"], "values": ["Admin", "Engineer"] }
+  ],
+  "write_mix": {
+    "insert_rate": 0.1,
+    "update_rate": 0.05,
+    "delete_rate": 0.02,
+    "attributes": ["Role", "Region", "Department"],
+    "attribute_weights": { "Role": 0.7, "Region": 0.2, "Department": 0.1 }
+  },
+  "run_options": {
+    "total_operations": 5000,
+    "metrics_interval_ops": 1000,
+    "warmup_ops": 500,
+    "adaptation_enabled": true
+  }
+}

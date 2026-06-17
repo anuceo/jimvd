@@ -1,5 +1,10 @@
 /target/
 /jimvd/target/
 adversarial_snapshots.json
+scaling_snapshots.json
+duckdb_report.json
+*_report.json
+scaling_time.txt
+/data/
 *_metrics.png
 *_lifetimes.png

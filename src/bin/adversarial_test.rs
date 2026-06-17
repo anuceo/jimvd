@@ -23,25 +23,47 @@ fn main() -> Result<()> {
     println!("=== Phase A: Training on IAM attributes (Role / Region / Department) ===\n");
     let mut runner = BenchmarkRunner::new(phase_a_config);
     runner.initialize();
+
+    // Reproducibility + covering-step metadata, recorded into every snapshot.
+    let rng_seed = runner.rng_seed;
+    let cover_build_secs = runner.cover_build_secs;
+    let cover_factor_count = runner.cover_factor_count;
+    println!(
+        "[Meta] rng_seed={} cover_build_secs={:.4} cover_factor_count={}",
+        rng_seed, cover_build_secs, cover_factor_count
+    );
+
     runner.run();
     runner.print_summary();
+
+    let snapshot_json = |op: usize, phase: &str, r: &jimvd::types::MetricsReport| -> Value {
+        serde_json::json!({
+            "operation": op,
+            "phase": phase,
+            "rng_seed": rng_seed,
+            "cover_build_secs": cover_build_secs,
+            "cover_factor_count": cover_factor_count,
+            "factor_utilization": r.factor_utilization,
+            "query_factor_utilization": r.query_factor_utilization,
+            "query_factor_ops": r.query_factor_ops,
+            "write_factor_ops": r.write_factor_ops,
+            "row_ops": r.row_ops,
+            "write_propagation_nodes": r.write_propagation_nodes,
+            "uaf": r.uaf,
+            "memory_bytes": r.memory_bytes,
+            "storage_bytes": r.storage_bytes,
+            "structural_factors": r.structural_factor_count,
+            "operational_factors": r.operational_factor_count,
+            "active_factors": r.active_factors,
+            "evicted_factors": r.evicted_factors,
+        })
+    };
 
     // Collect Phase A snapshots before the config is swapped out.
     let mut all_snapshots: Vec<Value> = runner
         .snapshots
         .iter()
-        .map(|(op, r)| {
-            serde_json::json!({
-                "operation": op,
-                "phase": "A",
-                "factor_utilization": r.factor_utilization,
-                "uaf": r.uaf,
-                "structural_factors": r.structural_factor_count,
-                "operational_factors": r.operational_factor_count,
-                "active_factors": r.active_factors,
-                "evicted_factors": r.evicted_factors,
-            })
-        })
+        .map(|(op, r)| snapshot_json(*op, "A", r))
         .collect();
 
     // ── Phase B ──────────────────────────────────────────────────────────────
@@ -53,19 +75,8 @@ fn main() -> Result<()> {
     let mut phase_b_snapshots: Vec<Value> = runner
         .snapshots
         .iter()
-        .map(|(op, r)| {
-            serde_json::json!({
-                // Offset so the timeline is continuous across both phases.
-                "operation": *op + transition_at,
-                "phase": "B",
-                "factor_utilization": r.factor_utilization,
-                "uaf": r.uaf,
-                "structural_factors": r.structural_factor_count,
-                "operational_factors": r.operational_factor_count,
-                "active_factors": r.active_factors,
-                "evicted_factors": r.evicted_factors,
-            })
-        })
+        // Offset so the timeline is continuous across both phases.
+        .map(|(op, r)| snapshot_json(*op + transition_at, "B", r))
         .collect();
 
     all_snapshots.append(&mut phase_b_snapshots);

@@ -1,0 +1,14 @@
+# Environment configuration for building the workspace, in particular the
+# `benchmark-suite/duckdb_runner` crate, whose bundled DuckDB compiles a C++
+# amalgamation.
+#
+# - Force the GNU C++ compiler (g++) for the bundled build; the default `c++`
+#   on this image is clang, which is not configured with the libstdc++ headers.
+# - Add g++'s library directory to the linker search path so the rustc default
+#   linker (lld) can resolve `-lstdc++` at link time.
+[env]
+CXX = "g++"
+CC = "gcc"
+
+[build]
+rustflags = ["-L", "/usr/lib/gcc/x86_64-linux-gnu/13"]
