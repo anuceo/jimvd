@@ -1,0 +1,108 @@
+{
+  "workload_name": "adversarial_truelowcorr",
+  "description": "True low-correlation: expanded value lists force near-unique combinations per object",
+  "transition_at_ops": 5000,
+  "phase_a": {
+    "workload_name": "iam_truelowcorr",
+    "description": "Role/Region/Department with 20x15x20 = 6000 possible combinations for 1000 objects",
+    "adaptation": {
+      "materialization_threshold": 3,
+      "eviction_ticks": 500
+    },
+    "tables": {
+      "employees": {
+        "attributes": {
+          "Role": [
+            "Admin_001","Admin_002","Admin_003","Admin_004","Admin_005",
+            "Engineer_001","Engineer_002","Engineer_003","Engineer_004","Engineer_005",
+            "Manager_001","Manager_002","Manager_003","Manager_004","Manager_005",
+            "Viewer_001","Viewer_002","Viewer_003","Viewer_004","Viewer_005"
+          ],
+          "Region": [
+            "US_001","US_002","US_003","US_004","US_005",
+            "EU_001","EU_002","EU_003","EU_004","EU_005",
+            "APAC_001","APAC_002","APAC_003","APAC_004","APAC_005"
+          ],
+          "Department": [
+            "Engineering_001","Engineering_002","Engineering_003","Engineering_004","Engineering_005",
+            "Sales_001","Sales_002","Sales_003","Sales_004","Sales_005",
+            "HR_001","HR_002","HR_003","HR_004","HR_005",
+            "Finance_001","Finance_002","Finance_003","Finance_004","Finance_005"
+          ]
+        },
+        "initial_objects": 1000,
+        "correlation_hint": "low"
+      }
+    },
+    "query_mix": [
+      { "type": "eq",  "weight": 40, "attribute": "Role",   "values": ["Admin_001","Engineer_001","Manager_001","Viewer_001"] },
+      { "type": "and", "weight": 30, "attributes": ["Role", "Region"] },
+      { "type": "and", "weight": 20, "attributes": ["Role", "Region", "Department"] },
+      { "type": "or",  "weight": 10, "attributes": ["Role"], "values": ["Admin_001","Engineer_001"] }
+    ],
+    "write_mix": {
+      "insert_rate": 0.1,
+      "update_rate": 0.05,
+      "delete_rate": 0.02,
+      "attributes": ["Role", "Region", "Department"]
+    },
+    "run_options": {
+      "total_operations": 5000,
+      "metrics_interval_ops": 500,
+      "warmup_ops": 500,
+      "adaptation_enabled": true
+    }
+  },
+  "phase_b": {
+    "workload_name": "clearance_truelowcorr",
+    "description": "Clearance/Project/Office with 20x20x20 = 8000 possible combinations",
+    "adaptation": {
+      "materialization_threshold": 3,
+      "eviction_ticks": 500
+    },
+    "tables": {
+      "employees": {
+        "attributes": {
+          "Clearance": [
+            "Public_001","Public_002","Public_003","Public_004","Public_005",
+            "Confidential_001","Confidential_002","Confidential_003","Confidential_004","Confidential_005",
+            "Secret_001","Secret_002","Secret_003","Secret_004","Secret_005",
+            "TopSecret_001","TopSecret_002","TopSecret_003","TopSecret_004","TopSecret_005"
+          ],
+          "Project": [
+            "Alpha_001","Alpha_002","Alpha_003","Alpha_004","Alpha_005",
+            "Beta_001","Beta_002","Beta_003","Beta_004","Beta_005",
+            "Gamma_001","Gamma_002","Gamma_003","Gamma_004","Gamma_005",
+            "Delta_001","Delta_002","Delta_003","Delta_004","Delta_005"
+          ],
+          "Office": [
+            "HQ_001","HQ_002","HQ_003","HQ_004","HQ_005",
+            "Branch1_001","Branch1_002","Branch1_003","Branch1_004","Branch1_005",
+            "Branch2_001","Branch2_002","Branch2_003","Branch2_004","Branch2_005",
+            "Remote_001","Remote_002","Remote_003","Remote_004","Remote_005"
+          ]
+        },
+        "initial_objects": 0,
+        "correlation_hint": "low"
+      }
+    },
+    "query_mix": [
+      { "type": "eq",  "weight": 40, "attribute": "Clearance", "values": ["Public_001","Confidential_001","Secret_001","TopSecret_001"] },
+      { "type": "and", "weight": 30, "attributes": ["Clearance", "Project"] },
+      { "type": "and", "weight": 20, "attributes": ["Clearance", "Project", "Office"] },
+      { "type": "or",  "weight": 10, "attributes": ["Clearance"], "values": ["Secret_001","TopSecret_001"] }
+    ],
+    "write_mix": {
+      "insert_rate": 0.1,
+      "update_rate": 0.05,
+      "delete_rate": 0.02,
+      "attributes": ["Clearance", "Project", "Office"]
+    },
+    "run_options": {
+      "total_operations": 5000,
+      "metrics_interval_ops": 500,
+      "warmup_ops": 0,
+      "adaptation_enabled": true
+    }
+  }
+}
