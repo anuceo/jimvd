@@ -546,7 +546,7 @@ impl MultiTableGraph {
     }
 
     /// Advance the global tick and apply a delta to a specific table.
-    pub fn apply_delta_to(&mut self, table: &str, delta: &Delta, metrics: &Metrics) {
+    pub fn apply_delta(&mut self, table: &str, delta: &Delta, metrics: &Metrics) {
         self.current_tick += 1;
         self.table_mut(table).apply_delta(delta, metrics);
     }
