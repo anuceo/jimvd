@@ -2,6 +2,26 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
+pub struct AdaptationConfig {
+    #[serde(default = "default_materialization_threshold")]
+    pub materialization_threshold: u64,
+    #[serde(default = "default_eviction_ticks")]
+    pub eviction_ticks: u64,
+}
+
+fn default_materialization_threshold() -> u64 { 3 }
+fn default_eviction_ticks() -> u64 { 500 }
+
+impl Default for AdaptationConfig {
+    fn default() -> Self {
+        AdaptationConfig {
+            materialization_threshold: default_materialization_threshold(),
+            eviction_ticks: default_eviction_ticks(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct WorkloadConfig {
     pub workload_name: String,
     pub description: String,
@@ -9,6 +29,8 @@ pub struct WorkloadConfig {
     pub query_mix: Vec<QueryTemplate>,
     pub write_mix: WriteMix,
     pub run_options: RunOptions,
+    #[serde(default)]
+    pub adaptation: AdaptationConfig,
 }
 
 #[derive(Debug, Deserialize)]

@@ -7,7 +7,9 @@ use std::fs;
 fn main() -> Result<()> {
     env_logger::init();
 
-    let config_str = fs::read_to_string("config/adversarial.json")?;
+    let config_path = std::env::args().nth(1)
+        .unwrap_or_else(|| "config/adversarial.json".to_string());
+    let config_str = fs::read_to_string(&config_path)?;
     let full_config: Value = serde_json::from_str(&config_str)?;
 
     let transition_at: usize = full_config["transition_at_ops"]

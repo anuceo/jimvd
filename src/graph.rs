@@ -17,6 +17,7 @@ pub struct FactorGraph {
     pub conjunction_hits: HashMap<String, u64>,
     pub factor_last_access: HashMap<u64, u64>,
     pub current_tick: u64,
+    pub materialization_threshold: u64,
 
     // lifecycle tracking for metrics
     pub lifecycles: HashMap<u64, FactorLifecycle>,          // active factors
@@ -34,6 +35,7 @@ impl FactorGraph {
             conjunction_hits: HashMap::new(),
             factor_last_access: HashMap::new(),
             current_tick: 0,
+            materialization_threshold: 3,
             lifecycles: HashMap::new(),
             completed_lifecycles: Vec::new(),
         }
@@ -309,9 +311,7 @@ impl FactorGraph {
         let hits = self.conjunction_hits.entry(key.clone()).or_insert(0);
         *hits += 1;
 
-        const THRESHOLD: u64 = 3;
-
-        if *hits == THRESHOLD {
+        if *hits == self.materialization_threshold {
             let already_exists = self.factors.values().any(|f| {
                 let mut sorted_intent = f.intent.clone();
                 sorted_intent.sort();

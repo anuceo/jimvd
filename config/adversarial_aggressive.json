@@ -1,6 +1,6 @@
 {
-  "workload_name": "adversarial_iam",
-  "description": "Adversarial shift from IAM attributes to completely different attributes",
+  "workload_name": "adversarial_iam_aggressive",
+  "description": "Adversarial shift with aggressive Phase B adaptation (threshold=1, eviction=100)",
   "transition_at_ops": 5000,
   "phase_a": {
     "workload_name": "iam_phase",
@@ -41,10 +41,10 @@
   },
   "phase_b": {
     "workload_name": "clearance_phase",
-    "description": "Queries on Clearance, Project, Office — completely different attributes",
+    "description": "Queries on Clearance, Project, Office — aggressive adaptation",
     "adaptation": {
-      "materialization_threshold": 3,
-      "eviction_ticks": 500
+      "materialization_threshold": 1,
+      "eviction_ticks": 100
     },
     "tables": {
       "employees": {

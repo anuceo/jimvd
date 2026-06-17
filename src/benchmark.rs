@@ -12,18 +12,23 @@ pub struct BenchmarkRunner {
     metrics: Metrics,
     next_object_id: u32,
     next_delta_id: i64,
+    next_eviction_tick: u64,
     /// Per-interval snapshots collected during run(). Cleared by change_workload().
     pub snapshots: Vec<(usize, MetricsReport)>,
 }
 
 impl BenchmarkRunner {
     pub fn new(config: WorkloadConfig) -> Self {
+        let mut graph = FactorGraph::new();
+        graph.materialization_threshold = config.adaptation.materialization_threshold;
+        let next_eviction_tick = config.adaptation.eviction_ticks;
         BenchmarkRunner {
             config,
-            graph: FactorGraph::new(),
+            graph,
             metrics: Metrics::new(),
             next_object_id: 0,
             next_delta_id: 1,
+            next_eviction_tick,
             snapshots: Vec::new(),
         }
     }
@@ -31,6 +36,8 @@ impl BenchmarkRunner {
     /// Swap the workload config without resetting the graph or metrics.
     /// Clears the snapshot list so the caller can collect per-phase snapshots separately.
     pub fn change_workload(&mut self, new_config: WorkloadConfig) {
+        self.graph.materialization_threshold = new_config.adaptation.materialization_threshold;
+        self.next_eviction_tick = self.graph.current_tick + new_config.adaptation.eviction_ticks;
         self.config = new_config;
         self.snapshots.clear();
     }
@@ -86,9 +93,10 @@ impl BenchmarkRunner {
                 self.do_read(&mut rng, query_weight);
             }
 
-            // Evict stale operational factors periodically
-            if i > 0 && i % 1000 == 0 {
-                self.graph.evict_operational_factors(500);
+            // Evict stale operational factors on the configured tick cadence
+            if self.graph.current_tick >= self.next_eviction_tick {
+                self.graph.evict_operational_factors(self.config.adaptation.eviction_ticks);
+                self.next_eviction_tick += self.config.adaptation.eviction_ticks;
             }
 
             if i > 0 && i % interval == 0 {
