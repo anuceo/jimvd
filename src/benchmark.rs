@@ -24,7 +24,7 @@ enum Query {
 pub struct BenchmarkRunner {
     pub config: WorkloadConfig,
     multi: MultiTableGraph,
-    metrics: Metrics,
+    pub metrics: Metrics,
     next_object_id: u32,
     next_delta_id: i64,
     next_eviction_tick: u64,

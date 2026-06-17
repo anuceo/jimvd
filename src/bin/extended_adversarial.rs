@@ -26,7 +26,6 @@ fn main() -> Result<()> {
     let config_str = fs::read_to_string("benchmarks/extended_adversarial.json")?;
     let ext_config: ExtendedConfig = serde_json::from_str(&config_str)?;
 
-    // First phase: create runner and initialize data
     let first_phase = &ext_config.phases[0];
     let mut runner = BenchmarkRunner::new(first_phase.workload.clone());
     runner.initialize();
@@ -40,6 +39,11 @@ fn main() -> Result<()> {
     for (i, phase) in ext_config.phases.iter().enumerate() {
         runner.current_phase_name = phase.name.clone();
         runner.config = phase.workload.clone();
+
+        // Reset counters so each phase's utilisation curve starts from 0.
+        if i > 0 {
+            runner.metrics.reset();
+        }
 
         let phase_start_op = runner.total_ops_executed;
         let snapshot_offset = runner.snapshots.len();
@@ -57,23 +61,21 @@ fn main() -> Result<()> {
             }));
         }
 
-        // Adaptation latency (skip first phase)
+        // Adaptation latency: first snapshot in this phase where util >= threshold.
         if i > 0 {
             let threshold = ext_config.adaptation_threshold;
-            let latency = runner.snapshots.iter()
-                .filter(|(op, _)| *op >= phase_start_op)
+            let latency = runner.snapshots[snapshot_offset..]
+                .iter()
                 .find(|(_, rep)| rep.factor_utilization >= threshold)
                 .map(|(op, _)| op - phase_start_op);
             adaptation_latencies.push((phase.name.clone(), latency));
         }
     }
 
-    // Write all snapshots to JSON
     let snapshots_json = serde_json::to_string_pretty(&all_snapshots)?;
     fs::write("extended_adversarial_snapshots.json", snapshots_json)?;
     println!("Snapshots saved to extended_adversarial_snapshots.json");
 
-    // Print adaptation summary
     println!("\n=== Adaptation Latency (to reach {}% factor utilization) ===",
              (ext_config.adaptation_threshold * 100.0) as u32);
     for (name, lat) in &adaptation_latencies {

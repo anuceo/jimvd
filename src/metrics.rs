@@ -39,6 +39,16 @@ impl Metrics {
         }
     }
 
+    /// Reset all counters to zero (call at the start of each new phase).
+    pub fn reset(&self) {
+        self.total_queries.store(0, Ordering::Relaxed);
+        self.factor_ops.store(0, Ordering::Relaxed);
+        self.row_ops.store(0, Ordering::Relaxed);
+        self.nodes_touched_by_updates.store(0, Ordering::Relaxed);
+        self.objects_updated.store(0, Ordering::Relaxed);
+        self.join_fallbacks.store(0, Ordering::Relaxed);
+    }
+
     /// Update Amplification Factor = nodes_touched / objects_updated
     pub fn uaf(&self) -> f64 {
         let n = self.nodes_touched_by_updates.load(Ordering::Relaxed) as f64;

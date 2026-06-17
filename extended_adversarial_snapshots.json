@@ -2,10 +2,10 @@
   {
     "factor_utilization": 1.0,
     "operation": 2000,
-    "operational_factors": 58,
+    "operational_factors": 59,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.0791788856304985
+    "uaf": 4.223241590214068
   },
   {
     "factor_utilization": 1.0,
@@ -13,7 +13,7 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.29037037037037
+    "uaf": 4.445730824891462
   },
   {
     "factor_utilization": 1.0,
@@ -21,7 +21,7 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.361598440545809
+    "uaf": 4.486301369863014
   },
   {
     "factor_utilization": 1.0,
@@ -29,102 +29,102 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.405982905982906
+    "uaf": 4.529324424647364
   },
   {
-    "factor_utilization": 0.9148750577248704,
+    "factor_utilization": 0.5258941344778255,
     "operation": 12000,
     "operational_factors": 60,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 3.7612505921364283
+    "uaf": 0.5261627906976745
   },
   {
-    "factor_utilization": 0.8558495821727019,
+    "factor_utilization": 0.5212492869366799,
     "operation": 14000,
     "operational_factors": 60,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 3.303905614320586
+    "uaf": 0.46273291925465837
   },
   {
-    "factor_utilization": 0.81236269979547,
+    "factor_utilization": 0.5220461920213781,
     "operation": 16000,
-    "operational_factors": 38,
+    "operational_factors": 32,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 2.934303977272727
+    "uaf": 0.4652567975830816
   },
   {
-    "factor_utilization": 0.7783394710411784,
+    "factor_utilization": 0.5207794075352316,
     "operation": 18000,
-    "operational_factors": 26,
+    "operational_factors": 23,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 2.666560812956494
+    "uaf": 0.43263473053892215
   },
   {
-    "factor_utilization": 0.7717268545299286,
+    "factor_utilization": 1.0,
     "operation": 22000,
-    "operational_factors": 59,
+    "operational_factors": 58,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.568039624608968
+    "uaf": 3.607843137254902
   },
   {
-    "factor_utilization": 0.7895471976026615,
+    "factor_utilization": 1.0,
     "operation": 24000,
     "operational_factors": 60,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.6979640718562874
+    "uaf": 3.774891774891775
   },
   {
-    "factor_utilization": 0.8048969982342554,
+    "factor_utilization": 1.0,
     "operation": 26000,
     "operational_factors": 60,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.8173140954495004
+    "uaf": 3.7974683544303796
   },
   {
-    "factor_utilization": 0.8183352697459281,
+    "factor_utilization": 1.0,
     "operation": 28000,
     "operational_factors": 60,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.9211285008237233
+    "uaf": 3.831254585473221
   },
   {
-    "factor_utilization": 0.8087558487382066,
+    "factor_utilization": 0.5148543409287568,
     "operation": 32000,
     "operational_factors": 60,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 2.8491457651762997
+    "uaf": 0.322884012539185
   },
   {
-    "factor_utilization": 0.7914934959788417,
+    "factor_utilization": 0.5147123407992973,
     "operation": 34000,
-    "operational_factors": 44,
+    "operational_factors": 28,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 2.697417601087326
+    "uaf": 0.29300291545189505
   },
   {
-    "factor_utilization": 0.7749991534319868,
+    "factor_utilization": 0.5162075343132483,
     "operation": 36000,
-    "operational_factors": 44,
+    "operational_factors": 28,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 2.5796960879405106
+    "uaf": 0.3229873908826382
   },
   {
-    "factor_utilization": 0.7607164580465474,
+    "factor_utilization": 0.5151359671626475,
     "operation": 38000,
-    "operational_factors": 21,
+    "operational_factors": 20,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 2.459393196444989
+    "uaf": 0.29797979797979796
   }
 ]
