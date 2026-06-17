@@ -1,7 +1,7 @@
 use crate::cover::GreedyCover;
 use crate::graph::FactorGraph;
 use crate::metrics::Metrics;
-use crate::types::{Delta, DeltaType, QueryFilter};
+use crate::types::{Delta, DeltaType, MetricsReport, QueryFilter};
 use crate::workload::{QueryTemplate, WorkloadConfig};
 use rand::{Rng, RngExt};
 use std::collections::HashMap;
@@ -12,6 +12,8 @@ pub struct BenchmarkRunner {
     metrics: Metrics,
     next_object_id: u32,
     next_delta_id: i64,
+    /// Per-interval snapshots collected during run(). Cleared by change_workload().
+    pub snapshots: Vec<(usize, MetricsReport)>,
 }
 
 impl BenchmarkRunner {
@@ -22,7 +24,15 @@ impl BenchmarkRunner {
             metrics: Metrics::new(),
             next_object_id: 0,
             next_delta_id: 1,
+            snapshots: Vec::new(),
         }
+    }
+
+    /// Swap the workload config without resetting the graph or metrics.
+    /// Clears the snapshot list so the caller can collect per-phase snapshots separately.
+    pub fn change_workload(&mut self, new_config: WorkloadConfig) {
+        self.config = new_config;
+        self.snapshots.clear();
     }
 
     pub fn initialize(&mut self) {
@@ -92,6 +102,7 @@ impl BenchmarkRunner {
                     r.structural_factor_count,
                     r.operational_factor_count,
                 );
+                self.snapshots.push((i, r));
             }
         }
     }
