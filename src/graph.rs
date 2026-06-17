@@ -235,7 +235,7 @@ impl FactorGraph {
         result
     }
 
-    fn eval_filter_with_fallback(&self, filter: &QueryFilter) -> (HashSet<ObjectId>, bool) {
+    pub fn eval_filter_with_fallback(&self, filter: &QueryFilter) -> (HashSet<ObjectId>, bool) {
         match filter {
             QueryFilter::Eq { attribute, value } => {
                 let atom = format!("{}={}", attribute, value);
@@ -505,6 +505,185 @@ fn factor_is_satisfied_by(factor: &Factor, object_props: &HashMap<String, String
     }
     true
 }
+
+// -----------------------------------------------------------------
+// Multi-table graph: coordinates per-table FactorGraphs for joins
+// -----------------------------------------------------------------
+
+pub struct MultiTableGraph {
+    pub tables: HashMap<String, FactorGraph>,
+}
+
+impl MultiTableGraph {
+    pub fn new() -> Self {
+        MultiTableGraph { tables: HashMap::new() }
+    }
+
+    pub fn add_table(&mut self, name: String, graph: FactorGraph) {
+        self.tables.insert(name, graph);
+    }
+
+    pub fn table(&self, name: &str) -> &FactorGraph {
+        self.tables.get(name).unwrap_or_else(|| panic!("table '{}' not found", name))
+    }
+
+    pub fn table_mut(&mut self, name: &str) -> &mut FactorGraph {
+        self.tables.get_mut(name).unwrap_or_else(|| panic!("table '{}' not found", name))
+    }
+
+    pub fn max_tick(&self) -> u64 {
+        self.tables.values().map(|g| g.current_tick).max().unwrap_or(0)
+    }
+
+    pub fn evict_all(&mut self, ticks_threshold: u64) {
+        for graph in self.tables.values_mut() {
+            graph.evict_operational_factors(ticks_threshold);
+        }
+    }
+
+    /// Factor-level equi-join between two tables on a shared attribute value.
+    /// When both sides have factors covering the join attribute the join stays
+    /// entirely in factor space (factor_ops++).  If either side has no such
+    /// factors we fall back to a nested-loop row join (row_ops++).
+    /// Returns the set of (left_id, right_id) pairs and whether rows were used.
+    pub fn factor_join(
+        &self,
+        left_table: &str,
+        right_table: &str,
+        join_attr: &str,
+        left_filters: &[QueryFilter],
+        right_filters: &[QueryFilter],
+        metrics: &Metrics,
+    ) -> (HashSet<(ObjectId, ObjectId)>, bool) {
+        let left_graph  = self.table(left_table);
+        let right_graph = self.table(right_table);
+
+        // Evaluate pre-filters to narrow each side's candidate set.
+        let left_universe: HashSet<ObjectId> = if left_filters.is_empty() {
+            left_graph.objects.keys().cloned().collect()
+        } else {
+            let sets: Vec<HashSet<ObjectId>> = left_filters.iter()
+                .map(|f| left_graph.eval_filter_with_fallback(f).0)
+                .collect();
+            intersect_all(sets)
+        };
+
+        let right_universe: HashSet<ObjectId> = if right_filters.is_empty() {
+            right_graph.objects.keys().cloned().collect()
+        } else {
+            let sets: Vec<HashSet<ObjectId>> = right_filters.iter()
+                .map(|f| right_graph.eval_filter_with_fallback(f).0)
+                .collect();
+            intersect_all(sets)
+        };
+
+        let join_prefix = format!("{}=", join_attr);
+
+        // Collect factors from each side that carry the join attribute in their intent.
+        let left_factors: Vec<&Factor> = left_graph.factors.values()
+            .filter(|f| f.intent.iter().any(|a| a.starts_with(&join_prefix)))
+            .collect();
+        let right_factors: Vec<&Factor> = right_graph.factors.values()
+            .filter(|f| f.intent.iter().any(|a| a.starts_with(&join_prefix)))
+            .collect();
+
+        if left_factors.is_empty() || right_factors.is_empty() {
+            // Row-based fallback: nested-loop join on the raw object stores.
+            metrics.row_ops.fetch_add(1, Ordering::Relaxed);
+            metrics.total_queries.fetch_add(1, Ordering::Relaxed);
+            let mut result = HashSet::new();
+            for &l in &left_universe {
+                let lval = left_graph.objects.get(&l).and_then(|p| p.get(join_attr));
+                if lval.is_none() { continue; }
+                for &r in &right_universe {
+                    if right_graph.objects.get(&r).and_then(|p| p.get(join_attr)) == lval {
+                        result.insert((l, r));
+                    }
+                }
+            }
+            return (result, true);
+        }
+
+        // Factor-level join: match factors by the value of the join attribute.
+        let mut result = HashSet::new();
+        for lf in &left_factors {
+            let lval = lf.intent.iter()
+                .find(|a| a.starts_with(&join_prefix))
+                .and_then(|a| a.splitn(2, '=').nth(1))
+                .unwrap_or("");
+
+            let l_extent: HashSet<ObjectId> = lf.extent.iter()
+                .cloned()
+                .filter(|id| left_universe.contains(id))
+                .collect();
+            if l_extent.is_empty() { continue; }
+
+            for rf in &right_factors {
+                let rval = rf.intent.iter()
+                    .find(|a| a.starts_with(&join_prefix))
+                    .and_then(|a| a.splitn(2, '=').nth(1))
+                    .unwrap_or("");
+                if lval != rval { continue; }
+
+                let r_extent: HashSet<ObjectId> = rf.extent.iter()
+                    .cloned()
+                    .filter(|id| right_universe.contains(id))
+                    .collect();
+                if r_extent.is_empty() { continue; }
+
+                for &l in &l_extent {
+                    for &r in &r_extent {
+                        result.insert((l, r));
+                    }
+                }
+            }
+        }
+
+        metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
+        metrics.total_queries.fetch_add(1, Ordering::Relaxed);
+        (result, false)
+    }
+
+    pub fn gather_metrics(&self, metrics: &Metrics) -> MetricsReport {
+        let mut structural = 0usize;
+        let mut operational = 0usize;
+        let mut active_lcs: Vec<FactorLifecycle> = Vec::new();
+        let mut evicted_lcs: Vec<FactorLifecycle> = Vec::new();
+
+        for graph in self.tables.values() {
+            structural  += graph.factors.values().filter(|f|  f.is_structural).count();
+            operational += graph.factors.values().filter(|f| !f.is_structural).count();
+            active_lcs.extend(graph.lifecycles.values().cloned());
+            evicted_lcs.extend(graph.completed_lifecycles.iter().cloned());
+        }
+
+        active_lcs.sort_by_key(|lc| lc.factor_id);
+        evicted_lcs.sort_by_key(|lc| lc.factor_id);
+
+        MetricsReport {
+            total_queries: metrics.total_queries.load(Ordering::Relaxed),
+            factor_ops:    metrics.factor_ops.load(Ordering::Relaxed),
+            row_ops:       metrics.row_ops.load(Ordering::Relaxed),
+            nodes_touched_by_updates: metrics.nodes_touched_by_updates.load(Ordering::Relaxed),
+            objects_updated: metrics.objects_updated.load(Ordering::Relaxed),
+            factor_utilization: metrics.factor_utilization(),
+            uaf:  metrics.uaf(),
+            current_tick: self.max_tick(),
+            structural_factor_count:  structural,
+            operational_factor_count: operational,
+            active_factors:  active_lcs,
+            evicted_factors: evicted_lcs,
+        }
+    }
+}
+
+fn intersect_all(sets: Vec<HashSet<ObjectId>>) -> HashSet<ObjectId> {
+    let mut iter = sets.into_iter();
+    let first = iter.next().unwrap_or_default();
+    iter.fold(first, |acc, s| acc.intersection(&s).cloned().collect())
+}
+
+// -----------------------------------------------------------------
 
 impl Delta {
     pub fn get_object_id(&self) -> ObjectId {

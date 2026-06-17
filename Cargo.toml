@@ -25,3 +25,7 @@ path = "src/main.rs"
 [[bin]]
 name = "adversarial_test"
 path = "src/bin/adversarial_test.rs"
+
+[[bin]]
+name = "join_test"
+path = "src/bin/join_test.rs"

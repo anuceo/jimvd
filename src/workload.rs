@@ -35,16 +35,20 @@ pub struct WorkloadConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct TableSpec {
-    pub attributes: HashMap<String, Option<Vec<String>>>,  // null = non-enumerated (e.g. Salary)
+    pub attributes: HashMap<String, Option<Vec<String>>>,
     pub initial_objects: usize,
     #[serde(default = "default_correlation")]
     pub correlation_hint: String,
     #[serde(default)]
-    pub factorize_attributes: Option<Vec<String>>,  // if absent, factorise all enumerated attrs
+    pub factorize_attributes: Option<Vec<String>>,
 }
 
 fn default_correlation() -> String {
     "low".to_string()
+}
+
+fn default_query_table() -> String {
+    "employees".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,20 +56,40 @@ fn default_correlation() -> String {
 pub enum QueryTemplate {
     #[serde(rename = "eq")]
     Eq {
+        #[serde(default)]
         weight: u32,
         attribute: String,
         values: Vec<String>,
+        #[serde(default = "default_query_table")]
+        table: String,
     },
     #[serde(rename = "and")]
     And {
+        #[serde(default)]
         weight: u32,
         attributes: Vec<String>,
+        #[serde(default = "default_query_table")]
+        table: String,
     },
     #[serde(rename = "or")]
     Or {
+        #[serde(default)]
         weight: u32,
         attributes: Vec<String>,
         values: Vec<String>,
+        #[serde(default = "default_query_table")]
+        table: String,
+    },
+    #[serde(rename = "join")]
+    Join {
+        weight: u32,
+        left_table: String,
+        right_table: String,
+        join_attribute: String,
+        #[serde(default)]
+        left_filters: Vec<QueryTemplate>,
+        #[serde(default)]
+        right_filters: Vec<QueryTemplate>,
     },
 }
 
@@ -75,6 +99,9 @@ pub struct WriteMix {
     pub update_rate: f64,
     pub delete_rate: f64,
     pub attributes: Vec<String>,
+    /// Which table writes go to (defaults to "employees" for backward compat).
+    #[serde(default = "default_query_table")]
+    pub table: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -91,6 +118,7 @@ impl QueryTemplate {
             QueryTemplate::Eq { weight, .. } => *weight,
             QueryTemplate::And { weight, .. } => *weight,
             QueryTemplate::Or { weight, .. } => *weight,
+            QueryTemplate::Join { weight, .. } => *weight,
         }
     }
 }
