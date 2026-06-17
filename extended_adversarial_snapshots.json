@@ -2,10 +2,10 @@
   {
     "factor_utilization": 1.0,
     "operation": 2000,
-    "operational_factors": 58,
+    "operational_factors": 57,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.065934065934066
+    "uaf": 4.130813953488372
   },
   {
     "factor_utilization": 1.0,
@@ -13,7 +13,7 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.33715925394548
+    "uaf": 4.332842415316642
   },
   {
     "factor_utilization": 1.0,
@@ -21,7 +21,7 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.382556987115956
+    "uaf": 4.440744368266405
   },
   {
     "factor_utilization": 1.0,
@@ -29,102 +29,102 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.440548780487805
+    "uaf": 4.484848484848484
   },
   {
-    "factor_utilization": 0.9126360181183943,
+    "factor_utilization": 0.91285234031549,
     "operation": 12000,
-    "operational_factors": 2,
+    "operational_factors": 3,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 3.79474216380182
+    "uaf": 3.8372677046710195
   },
   {
-    "factor_utilization": 0.8519677405138602,
+    "factor_utilization": 0.8532444171456148,
     "operation": 14000,
-    "operational_factors": 0,
+    "operational_factors": 1,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 3.320853286895951
+    "uaf": 3.3367653367653367
   },
   {
-    "factor_utilization": 0.8077188674902172,
+    "factor_utilization": 0.8095456456112193,
     "operation": 16000,
     "operational_factors": 0,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 2.9111195158850225
+    "uaf": 2.925705794947994
   },
   {
-    "factor_utilization": 0.7737038292104371,
+    "factor_utilization": 0.7754287453911984,
     "operation": 18000,
     "operational_factors": 0,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 2.622229684351914
+    "uaf": 2.6210075732630886
   },
   {
-    "factor_utilization": 0.764215935400079,
+    "factor_utilization": 0.7654794829824463,
     "operation": 22000,
     "operational_factors": 0,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.388325568648945
+    "uaf": 2.386468200270636
   },
   {
-    "factor_utilization": 0.7795173724786144,
+    "factor_utilization": 0.7808717664741713,
     "operation": 24000,
     "operational_factors": 0,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.383420986726772
+    "uaf": 2.387391841779975
   },
   {
-    "factor_utilization": 0.792753443355255,
+    "factor_utilization": 0.7942509099012107,
     "operation": 26000,
     "operational_factors": 0,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.379206312369459
+    "uaf": 2.3829351535836176
   },
   {
-    "factor_utilization": 0.8047417522036989,
+    "factor_utilization": 0.8060586258401793,
     "operation": 28000,
     "operational_factors": 0,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 2.3755627009646303
+    "uaf": 2.381445477599324
   },
   {
-    "factor_utilization": 0.7942562076981629,
+    "factor_utilization": 0.7954111291415895,
     "operation": 32000,
     "operational_factors": 0,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 2.2391222805701427
+    "uaf": 2.2420546932742056
   },
   {
-    "factor_utilization": 0.7757056063985234,
+    "factor_utilization": 0.7769598892967654,
     "operation": 34000,
     "operational_factors": 0,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 2.119640021175225
+    "uaf": 2.114097451014392
   },
   {
-    "factor_utilization": 0.7592636043678368,
+    "factor_utilization": 0.7606820642367377,
     "operation": 36000,
     "operational_factors": 0,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 2.011843202668891
+    "uaf": 2.0076935668685545
   },
   {
-    "factor_utilization": 0.7447557202597491,
+    "factor_utilization": 0.7462295750939418,
     "operation": 38000,
     "operational_factors": 0,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 1.9195948084836973
+    "uaf": 1.9131378935939196
   }
 ]

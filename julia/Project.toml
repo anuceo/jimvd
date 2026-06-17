@@ -1,0 +1,9 @@
+[deps]
+JSON       = "bf4720bc-e11a-5d0c-854e-bdca1663c893"
+Plots      = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[compat]
+julia      = "1"
+JSON       = "0.21"
+Plots      = "1"
