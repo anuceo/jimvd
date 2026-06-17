@@ -52,8 +52,10 @@ end
 # Combine into a single figure
 fig = plot(p1, p2, p3, layout=(3, 1), size=(800, 900))
 
-# Save — derive output name from input
-output_png = replace(filename, r"\.json$" => "_metrics.png")
+# Save to data/ directory, deriving name from input basename
+mkpath("data")
+basename_noext = replace(basename(filename), r"\.json$" => "")
+output_png = joinpath("data", basename_noext * "_metrics.png")
 savefig(fig, output_png)
 println("Plot saved to $output_png")
 

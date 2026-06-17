@@ -64,6 +64,8 @@ hist = histogram(lifetimes, bins=20, legend=false,
 # Add median line
 vline!([half_life], color=:red, linestyle=:dash, label="Half-life")
 
-output_png = replace(filename, r"\.json$" => "_lifetimes.png")
+mkpath("data")
+basename_noext = replace(basename(filename), r"\.json$" => "")
+output_png = joinpath("data", basename_noext * "_lifetimes.png")
 savefig(hist, output_png)
 println("Lifetime histogram saved to $output_png")
