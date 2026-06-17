@@ -22,7 +22,7 @@ enum Query {
 }
 
 pub struct BenchmarkRunner {
-    config: WorkloadConfig,
+    pub config: WorkloadConfig,
     multi: MultiTableGraph,
     metrics: Metrics,
     next_object_id: u32,
@@ -32,6 +32,10 @@ pub struct BenchmarkRunner {
     pub snapshots: Vec<(usize, MetricsReport)>,
     /// Per-delta propagation fanout (nodes touched per write operation).
     pub fanout_log: Vec<u64>,
+    /// Monotonically increasing across multiple run() calls.
+    pub total_ops_executed: usize,
+    /// Attached to every snapshot emitted by run().
+    pub current_phase_name: String,
 }
 
 impl BenchmarkRunner {
@@ -46,6 +50,8 @@ impl BenchmarkRunner {
             next_eviction_tick,
             snapshots: Vec::new(),
             fanout_log: Vec::new(),
+            total_ops_executed: 0,
+            current_phase_name: String::new(),
         }
     }
 
@@ -131,6 +137,8 @@ impl BenchmarkRunner {
         let mut rng = rand::rng();
 
         for i in 0..total {
+            let op_idx = self.total_ops_executed + i;
+
             if i == warmup {
                 println!("[Warmup done] Beginning measured workload…\n");
             }
@@ -148,19 +156,23 @@ impl BenchmarkRunner {
             }
 
             if i > 0 && i % interval == 0 {
-                let r = self.multi.gather_metrics(&self.metrics);
+                let mut r = self.multi.gather_metrics(&self.metrics);
+                r.phase_name = self.current_phase_name.clone();
                 println!(
-                    "[op {:>5}]  queries={:>5}  util={:>5.1}%  uaf={:.2}  S/O={}/{}",
-                    i,
+                    "[{:<3} op {:>6}]  queries={:>5}  util={:>5.1}%  uaf={:.2}  S/O={}/{}",
+                    r.phase_name,
+                    op_idx,
                     r.total_queries,
                     r.factor_utilization * 100.0,
                     r.uaf,
                     r.structural_factor_count,
                     r.operational_factor_count,
                 );
-                self.snapshots.push((i, r));
+                self.snapshots.push((op_idx, r));
             }
         }
+
+        self.total_ops_executed += total;
     }
 
     fn do_read(&mut self, rng: &mut impl Rng, total_weight: u32) {

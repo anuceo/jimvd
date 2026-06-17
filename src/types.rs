@@ -156,4 +156,5 @@ pub struct MetricsReport {
     pub operational_factor_count: usize,
     pub active_factors: Vec<FactorLifecycle>,
     pub evicted_factors: Vec<FactorLifecycle>,
+    pub phase_name: String,
 }

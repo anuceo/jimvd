@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct AdaptationConfig {
     #[serde(default = "default_materialization_threshold")]
     pub materialization_threshold: u64,
@@ -21,7 +21,7 @@ impl Default for AdaptationConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct WorkloadConfig {
     pub workload_name: String,
     pub description: String,
@@ -33,7 +33,7 @@ pub struct WorkloadConfig {
     pub adaptation: AdaptationConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct TableSpec {
     pub attributes: HashMap<String, Option<Vec<String>>>,
     pub initial_objects: usize,
@@ -51,7 +51,7 @@ fn default_query_table() -> String {
     "employees".to_string()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum QueryTemplate {
     #[serde(rename = "eq")]
@@ -93,7 +93,7 @@ pub enum QueryTemplate {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct WriteMix {
     pub insert_rate: f64,
     pub update_rate: f64,
@@ -104,7 +104,7 @@ pub struct WriteMix {
     pub table: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RunOptions {
     pub total_operations: usize,
     pub metrics_interval_ops: usize,

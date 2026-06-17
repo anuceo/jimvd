@@ -485,6 +485,7 @@ impl FactorGraph {
             operational_factor_count: operational_count,
             active_factors: active_lifecycles,
             evicted_factors: evicted,
+            phase_name: String::new(),
         }
     }
 }
@@ -767,6 +768,7 @@ impl MultiTableGraph {
             operational_factor_count: operational,
             active_factors:  active_lcs,
             evicted_factors: evicted_lcs,
+            phase_name: String::new(),
         }
     }
 

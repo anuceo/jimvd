@@ -1,0 +1,154 @@
+{
+  "workload_name": "extended_adversarial",
+  "phases": [
+    {
+      "name": "A1",
+      "workload": {
+        "workload_name": "iam_phase",
+        "description": "IAM workload: Role/Region/Department access-control queries",
+        "tables": {
+          "employees": {
+            "attributes": {
+              "Role":       ["Admin", "Engineer", "Manager", "Viewer"],
+              "Region":     ["US", "EU", "APAC"],
+              "Department": ["Engineering", "Sales", "HR", "Finance"]
+            },
+            "initial_objects": 1000,
+            "correlation_hint": "high"
+          }
+        },
+        "query_mix": [
+          {"type": "eq",  "weight": 40, "table": "employees", "attribute": "Role",
+           "values": ["Admin", "Engineer", "Manager", "Viewer"]},
+          {"type": "and", "weight": 30, "table": "employees", "attributes": ["Role", "Region"]},
+          {"type": "and", "weight": 20, "table": "employees", "attributes": ["Role", "Region", "Department"]},
+          {"type": "or",  "weight": 10, "table": "employees", "attributes": ["Role"],
+           "values": ["Admin", "Engineer"]}
+        ],
+        "write_mix": {
+          "insert_rate": 0.10, "update_rate": 0.05, "delete_rate": 0.02,
+          "attributes": ["Role", "Region", "Department"],
+          "table": "employees"
+        },
+        "run_options": {
+          "total_operations": 10000,
+          "metrics_interval_ops": 2000,
+          "warmup_ops": 2000,
+          "adaptation_enabled": true
+        }
+      }
+    },
+    {
+      "name": "B1",
+      "workload": {
+        "workload_name": "clearance_phase",
+        "description": "Clearance workload: Clearance/Project/Office security queries",
+        "tables": {
+          "employees": {
+            "attributes": {
+              "Clearance": ["Public", "Confidential", "Secret", "TopSecret"],
+              "Project":   ["Alpha", "Beta", "Gamma", "Delta"],
+              "Office":    ["HQ", "Branch1", "Branch2", "Remote"]
+            },
+            "initial_objects": 0,
+            "correlation_hint": "high"
+          }
+        },
+        "query_mix": [
+          {"type": "eq",  "weight": 40, "table": "employees", "attribute": "Clearance",
+           "values": ["Public", "Confidential", "Secret", "TopSecret"]},
+          {"type": "and", "weight": 30, "table": "employees", "attributes": ["Clearance", "Project"]},
+          {"type": "and", "weight": 20, "table": "employees", "attributes": ["Clearance", "Project", "Office"]},
+          {"type": "or",  "weight": 10, "table": "employees", "attributes": ["Clearance"],
+           "values": ["Secret", "TopSecret"]}
+        ],
+        "write_mix": {
+          "insert_rate": 0.10, "update_rate": 0.05, "delete_rate": 0.02,
+          "attributes": ["Clearance", "Project", "Office"],
+          "table": "employees"
+        },
+        "run_options": {
+          "total_operations": 10000,
+          "metrics_interval_ops": 2000,
+          "warmup_ops": 0,
+          "adaptation_enabled": true
+        }
+      }
+    },
+    {
+      "name": "A2",
+      "workload": {
+        "workload_name": "iam_phase",
+        "description": "IAM workload (return): Role/Region/Department access-control queries",
+        "tables": {
+          "employees": {
+            "attributes": {
+              "Role":       ["Admin", "Engineer", "Manager", "Viewer"],
+              "Region":     ["US", "EU", "APAC"],
+              "Department": ["Engineering", "Sales", "HR", "Finance"]
+            },
+            "initial_objects": 0,
+            "correlation_hint": "high"
+          }
+        },
+        "query_mix": [
+          {"type": "eq",  "weight": 40, "table": "employees", "attribute": "Role",
+           "values": ["Admin", "Engineer", "Manager", "Viewer"]},
+          {"type": "and", "weight": 30, "table": "employees", "attributes": ["Role", "Region"]},
+          {"type": "and", "weight": 20, "table": "employees", "attributes": ["Role", "Region", "Department"]},
+          {"type": "or",  "weight": 10, "table": "employees", "attributes": ["Role"],
+           "values": ["Admin", "Engineer"]}
+        ],
+        "write_mix": {
+          "insert_rate": 0.10, "update_rate": 0.05, "delete_rate": 0.02,
+          "attributes": ["Role", "Region", "Department"],
+          "table": "employees"
+        },
+        "run_options": {
+          "total_operations": 10000,
+          "metrics_interval_ops": 2000,
+          "warmup_ops": 0,
+          "adaptation_enabled": true
+        }
+      }
+    },
+    {
+      "name": "B2",
+      "workload": {
+        "workload_name": "clearance_phase",
+        "description": "Clearance workload (return): Clearance/Project/Office security queries",
+        "tables": {
+          "employees": {
+            "attributes": {
+              "Clearance": ["Public", "Confidential", "Secret", "TopSecret"],
+              "Project":   ["Alpha", "Beta", "Gamma", "Delta"],
+              "Office":    ["HQ", "Branch1", "Branch2", "Remote"]
+            },
+            "initial_objects": 0,
+            "correlation_hint": "high"
+          }
+        },
+        "query_mix": [
+          {"type": "eq",  "weight": 40, "table": "employees", "attribute": "Clearance",
+           "values": ["Public", "Confidential", "Secret", "TopSecret"]},
+          {"type": "and", "weight": 30, "table": "employees", "attributes": ["Clearance", "Project"]},
+          {"type": "and", "weight": 20, "table": "employees", "attributes": ["Clearance", "Project", "Office"]},
+          {"type": "or",  "weight": 10, "table": "employees", "attributes": ["Clearance"],
+           "values": ["Secret", "TopSecret"]}
+        ],
+        "write_mix": {
+          "insert_rate": 0.10, "update_rate": 0.05, "delete_rate": 0.02,
+          "attributes": ["Clearance", "Project", "Office"],
+          "table": "employees"
+        },
+        "run_options": {
+          "total_operations": 10000,
+          "metrics_interval_ops": 2000,
+          "warmup_ops": 0,
+          "adaptation_enabled": true
+        }
+      }
+    }
+  ],
+  "adaptation_threshold": 0.9
+}
