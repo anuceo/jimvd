@@ -22,4 +22,23 @@ A Rust prototype of a factorized ("rectangle"-based) database execution model. S
 ### Lint / test / build
 - Lint: `cargo clippy --all-targets` (currently emits warnings only, no errors).
 - Test: `cargo test` (no tests are defined yet; suite is empty but passes).
-- Build: `cargo build`.
+- Build: `cargo build` (root crate) or `cargo build --workspace` (includes the DuckDB runner).
+
+### Workspace layout & the DuckDB runner (non-obvious)
+- The repo is a Cargo **workspace**: the root `jimvd` crate plus
+  `benchmark-suite/duckdb_runner`. Binaries: `jimvd`, `adversarial_test`,
+  `scaling_wall`, `gen_dataset` (root crate) and `duckdb_runner` (member crate).
+- `duckdb_runner` depends on `duckdb` with the `bundled` feature, so the **first**
+  `cargo build --workspace` (or `--release --workspace`) compiles the DuckDB C++
+  amalgamation — expect ~5–7 minutes and high CPU. Subsequent builds are cached.
+- Committed `.cargo/config.toml` is required for that build: it forces `CXX=g++`
+  (the image's default `c++` is clang without configured libstdc++ headers) and
+  adds g++'s lib dir to the linker search path so `lld` can resolve `-lstdc++`.
+  The base image already ships `build-essential` + `libstdc++-13-dev`, so no
+  system packages need installing. If g++'s major version changes, update the
+  `-L /usr/lib/gcc/x86_64-linux-gnu/<ver>` path in `.cargo/config.toml`.
+- Multi-engine flow: `cargo run --bin gen_dataset -- --out-dir data` writes
+  `employees.csv` + `oplog.jsonl` + `meta.json`; then
+  `cargo run -p duckdb_runner -- --data-dir data` replays the same op log.
+  Generated benchmark artifacts (`*_snapshots.json`, `*_report.json`, `data*/`)
+  are gitignored. See `LIMITATIONS.md` for scope/caveats.
