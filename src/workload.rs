@@ -35,10 +35,12 @@ pub struct WorkloadConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct TableSpec {
-    pub attributes: HashMap<String, Vec<String>>,
+    pub attributes: HashMap<String, Option<Vec<String>>>,  // null = non-enumerated (e.g. Salary)
     pub initial_objects: usize,
     #[serde(default = "default_correlation")]
     pub correlation_hint: String,
+    #[serde(default)]
+    pub factorize_attributes: Option<Vec<String>>,  // if absent, factorise all enumerated attrs
 }
 
 fn default_correlation() -> String {

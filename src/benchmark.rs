@@ -47,16 +47,38 @@ impl BenchmarkRunner {
         let mut seed_objects: Vec<(u32, HashMap<String, String>)> = Vec::new();
 
         for (_name, spec) in &self.config.tables {
+            // Which attributes go into the factorisation (cover algorithm)?
+            // If factorize_attributes is set, use that list; otherwise use all enumerated ones.
+            let factorize_set: std::collections::HashSet<String> =
+                match &spec.factorize_attributes {
+                    Some(list) => list.iter().cloned().collect(),
+                    None => spec.attributes.iter()
+                        .filter(|(_, v)| v.is_some())
+                        .map(|(k, _)| k.clone())
+                        .collect(),
+                };
+
             for _ in 0..spec.initial_objects {
                 let oid = self.next_object_id;
                 self.next_object_id += 1;
                 let mut props: HashMap<String, String> = HashMap::new();
-                for (attr, values) in &spec.attributes {
-                    let val = values[rng.random_range(0..values.len())].clone();
+                for (attr, maybe_values) in &spec.attributes {
+                    let val = match maybe_values {
+                        Some(values) if !values.is_empty() => {
+                            values[rng.random_range(0..values.len())].clone()
+                        }
+                        // null or empty list → generate a random salary-like integer
+                        _ => rng.random_range(30_000u32..150_000u32).to_string(),
+                    };
                     props.insert(attr.clone(), val);
                 }
+                // Full props stored in the graph (enables row reconstruction)
                 self.graph.objects.insert(oid, props.clone());
-                seed_objects.push((oid, props));
+                // Only factorised attrs go to GreedyCover
+                let factorized: HashMap<String, String> = props.into_iter()
+                    .filter(|(k, _)| factorize_set.contains(k))
+                    .collect();
+                seed_objects.push((oid, factorized));
             }
         }
 
@@ -126,7 +148,7 @@ impl BenchmarkRunner {
         if let Some(f) = filter {
             // explicit split borrow: &mut self.graph vs &self.metrics
             let m = &self.metrics;
-            self.graph.query(&f, m);
+            self.graph.query_with_fallback(&f, m);
         }
     }
 
@@ -144,7 +166,12 @@ impl BenchmarkRunner {
     fn build_filter(&self, template: &QueryTemplate, rng: &mut impl Rng) -> QueryFilter {
         match template {
             QueryTemplate::Eq { attribute, values, .. } => {
-                let v = values[rng.random_range(0..values.len())].clone();
+                // Empty values list means sample from actual objects (non-enumerated attribute)
+                let v = if values.is_empty() {
+                    self.sample_value(attribute, rng)
+                } else {
+                    values[rng.random_range(0..values.len())].clone()
+                };
                 QueryFilter::Eq { attribute: attribute.clone(), value: v }
             }
             QueryTemplate::And { attributes, .. } => {
@@ -169,12 +196,20 @@ impl BenchmarkRunner {
     }
 
     fn sample_value(&self, attr: &str, rng: &mut impl Rng) -> String {
+        // Try enumerated values from config first
         for spec in self.config.tables.values() {
-            if let Some(vals) = spec.attributes.get(attr) {
+            if let Some(Some(vals)) = spec.attributes.get(attr) {
                 if !vals.is_empty() {
                     return vals[rng.random_range(0..vals.len())].clone();
                 }
             }
+        }
+        // Non-enumerated attribute (e.g. Salary): sample an actual value from live objects
+        let vals: Vec<String> = self.graph.objects.values()
+            .filter_map(|props| props.get(attr).cloned())
+            .collect();
+        if !vals.is_empty() {
+            return vals[rng.random_range(0..vals.len())].clone();
         }
         "unknown".to_string()
     }

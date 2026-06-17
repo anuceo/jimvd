@@ -210,6 +210,81 @@ impl FactorGraph {
     // Factor‑native query execution (with adaptation)
     // -----------------------------------------------------------------
 
+    /// Query with automatic row-reconstruction fallback for non-factorised attributes.
+    /// Increments row_ops whenever any sub-filter had to leave factor space.
+    pub fn query_with_fallback(&mut self, filter: &QueryFilter, metrics: &Metrics) -> HashSet<ObjectId> {
+        self.current_tick += 1;
+
+        let (result, used_rows) = self.eval_filter_with_fallback(filter);
+
+        metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
+        metrics.total_queries.fetch_add(1, Ordering::Relaxed);
+        if used_rows {
+            metrics.row_ops.fetch_add(1, Ordering::Relaxed);
+        }
+
+        self.record_factor_access_for_filter(filter);
+
+        // Only adapt when the conjunction is fully in factor space
+        if !used_rows {
+            if let QueryFilter::And(sub_filters) = filter {
+                self.adapt_conjunction(sub_filters, &result);
+            }
+        }
+
+        result
+    }
+
+    fn eval_filter_with_fallback(&self, filter: &QueryFilter) -> (HashSet<ObjectId>, bool) {
+        match filter {
+            QueryFilter::Eq { attribute, value } => {
+                let atom = format!("{}={}", attribute, value);
+                if let Some(factor_ids) = self.bpi.get(&atom) {
+                    // Attribute is in factor space
+                    let mut result = HashSet::new();
+                    for fid in factor_ids {
+                        if let Some(factor) = self.factors.get(fid) {
+                            result.extend(&factor.extent);
+                        }
+                    }
+                    (result, false)
+                } else {
+                    // Not in factor space — scan all objects (row reconstruction)
+                    let mut result = HashSet::new();
+                    for (id, props) in &self.objects {
+                        if props.get(attribute.as_str()) == Some(value) {
+                            result.insert(*id);
+                        }
+                    }
+                    (result, true)
+                }
+            }
+            QueryFilter::And(sub_filters) => {
+                let mut sets: Vec<HashSet<ObjectId>> = Vec::new();
+                let mut used_rows = false;
+                for f in sub_filters {
+                    let (res, used) = self.eval_filter_with_fallback(f);
+                    sets.push(res);
+                    used_rows |= used;
+                }
+                let mut iter = sets.into_iter();
+                let first = iter.next().unwrap_or_default();
+                let result = iter.fold(first, |acc, s| acc.intersection(&s).cloned().collect());
+                (result, used_rows)
+            }
+            QueryFilter::Or(sub_filters) => {
+                let mut result = HashSet::new();
+                let mut used_rows = false;
+                for f in sub_filters {
+                    let (res, used) = self.eval_filter_with_fallback(f);
+                    result.extend(res);
+                    used_rows |= used;
+                }
+                (result, used_rows)
+            }
+        }
+    }
+
     pub fn query(&mut self, filter: &QueryFilter, metrics: &Metrics) -> HashSet<ObjectId> {
         self.current_tick += 1;
 
