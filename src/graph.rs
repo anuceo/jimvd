@@ -73,12 +73,21 @@ impl FactorGraph {
                     set.remove(&factor_id);
                 }
             }
-            for prop in factor.intent {
-                if let Some(set) = self.bpi.get_mut(&prop) {
+            for prop in &factor.intent {
+                if let Some(set) = self.bpi.get_mut(prop) {
                     set.remove(&factor_id);
                 }
             }
             self.factor_last_access.remove(&factor_id);
+
+            // Reset conjunction_hits so this combination can be re-materialised
+            // if the workload returns to it after eviction.
+            if !factor.is_structural {
+                let mut atoms = factor.intent.clone();
+                atoms.sort();
+                let key = atoms.join("&");
+                self.conjunction_hits.remove(&key);
+            }
 
             // --- lifecycle: move to completed ---
             if let Some(mut lc) = self.lifecycles.remove(&factor_id) {

@@ -6,6 +6,10 @@
       "workload": {
         "workload_name": "iam_phase",
         "description": "IAM workload: Role/Region/Department access-control queries",
+        "adaptation": {
+          "materialization_threshold": 3,
+          "eviction_ticks": 2000
+        },
         "tables": {
           "employees": {
             "attributes": {
@@ -43,6 +47,10 @@
       "workload": {
         "workload_name": "clearance_phase",
         "description": "Clearance workload: Clearance/Project/Office security queries",
+        "adaptation": {
+          "materialization_threshold": 3,
+          "eviction_ticks": 2000
+        },
         "tables": {
           "employees": {
             "attributes": {
@@ -80,6 +88,10 @@
       "workload": {
         "workload_name": "iam_phase",
         "description": "IAM workload (return): Role/Region/Department access-control queries",
+        "adaptation": {
+          "materialization_threshold": 3,
+          "eviction_ticks": 2000
+        },
         "tables": {
           "employees": {
             "attributes": {
@@ -117,6 +129,10 @@
       "workload": {
         "workload_name": "clearance_phase",
         "description": "Clearance workload (return): Clearance/Project/Office security queries",
+        "adaptation": {
+          "materialization_threshold": 3,
+          "eviction_ticks": 2000
+        },
         "tables": {
           "employees": {
             "attributes": {
