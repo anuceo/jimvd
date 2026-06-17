@@ -128,15 +128,28 @@ pub struct FactorLifecycle {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsReport {
     pub total_queries: u64,
-    pub factor_ops: u64,
+    /// Factor‑space ops on the query path that stayed in factor space.
+    pub query_factor_ops: u64,
+    /// Factor‑space ops on the write path (incremental maintenance).
+    pub write_factor_ops: u64,
     pub row_ops: u64,
-    pub nodes_touched_by_updates: u64,
+    /// Graph nodes touched during write/delta propagation (was
+    /// `nodes_touched_by_updates`).
+    pub write_propagation_nodes: u64,
     pub objects_updated: u64,
+    /// Combined utilization across query and write factor ops (backward
+    /// compatible definition).
     pub factor_utilization: f64,
+    /// Query‑only utilization: query_factor_ops / (query_factor_ops + row_ops).
+    pub query_factor_utilization: f64,
     pub uaf: f64,
     pub current_tick: u64,
     pub structural_factor_count: usize,
     pub operational_factor_count: usize,
+    /// Resident set size (bytes) of the process at snapshot time.
+    pub memory_bytes: u64,
+    /// Estimated logical storage of all factors plus BOI/BPI overhead (bytes).
+    pub storage_bytes: u64,
     pub active_factors: Vec<FactorLifecycle>,
     pub evicted_factors: Vec<FactorLifecycle>,
 }

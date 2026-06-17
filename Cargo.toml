@@ -16,7 +16,7 @@ env_logger = "0.11.10"
 clap = { version = "4", features = ["derive"] }
 bitvec = "1"
 rand = "0.10.1"
-
+sysinfo = "0.37"
 
 [[bin]]
 name = "jimvd"
@@ -25,3 +25,14 @@ path = "src/main.rs"
 [[bin]]
 name = "adversarial_test"
 path = "src/bin/adversarial_test.rs"
+
+[[bin]]
+name = "scaling_wall"
+path = "src/bin/scaling_wall.rs"
+
+[[bin]]
+name = "gen_dataset"
+path = "src/bin/gen_dataset.rs"
+
+[workspace]
+members = [".", "benchmark-suite/duckdb_runner"]

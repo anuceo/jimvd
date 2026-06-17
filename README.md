@@ -63,7 +63,28 @@ Right now JimVD is a Rust prototype you can run in any GitHub Codespace. No loca
    ```
    This generates synthetic IAM data, discovers initial factors, and runs a mixed read/write workload, printing metrics like Factor Utilization and Update Amplification Factor.
 
-4. **Analyze the results with Julia**
+   Other benchmark binaries:
+   ```bash
+   cargo run --bin adversarial_test                       # workload-shift / adaptation test
+   cargo run --bin scaling_wall -- --max-scale 100000     # scaling wall (profiles the covering step)
+   cargo run --bin gen_dataset -- --scale 10000 --out-dir data   # export CSV + op log for other engines
+   ```
+
+   Workload configs support optional skewed `weights`, `null_probability`,
+   `continuous` integer attributes, query `hot_values`, per-attribute write
+   `attribute_weights`, and an `rng_seed` (see `benchmarks/workload_advanced.json`).
+   **All published results use uniform synthetic categorical data**; skewed and
+   real-world distributions are untested — see [`LIMITATIONS.md`](LIMITATIONS.md).
+
+4. **Compare against DuckDB (optional)**
+   ```bash
+   cargo run --bin gen_dataset -- --scale 10000 --out-dir data
+   cargo run -p duckdb_runner -- --data-dir data
+   ```
+   The DuckDB runner replays the same CSV + operation log and reports P50/P99
+   latency. A Postgres comparison is still a placeholder (see `LIMITATIONS.md`).
+
+5. **Analyze the results with Julia**
    ```bash
    julia tools/plot_metrics.jl snapshots.json
    julia tools/halflife_report.jl snapshots.json
