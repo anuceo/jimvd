@@ -1,38 +1,38 @@
 [
   {
     "adaptation_latency_ops": null,
-    "factor_utilization": 0.5,
+    "factor_util": 0.8256232703018793,
     "phase_index": 0,
-    "uaf": 0.0
+    "uaf": 3.7171703840570145
   },
   {
     "adaptation_latency_ops": null,
-    "factor_utilization": 0.5,
+    "factor_util": 0.6377524504768005,
     "phase_index": 1,
-    "uaf": 0.0
+    "uaf": 3.4142348754448397
   },
   {
     "adaptation_latency_ops": null,
-    "factor_utilization": 0.5,
+    "factor_util": 0.6311877234583676,
     "phase_index": 2,
-    "uaf": 0.0
+    "uaf": 3.3184548801756995
   },
   {
     "adaptation_latency_ops": null,
-    "factor_utilization": 0.5,
+    "factor_util": 0.8142903322060872,
     "phase_index": 3,
-    "uaf": 0.0
+    "uaf": 3.2540345913971582
   },
   {
     "adaptation_latency_ops": null,
-    "factor_utilization": 0.5,
+    "factor_util": 0.6256234179594496,
     "phase_index": 4,
-    "uaf": 0.0
+    "uaf": 3.205727494542186
   },
   {
     "adaptation_latency_ops": null,
-    "factor_utilization": 0.5,
+    "factor_util": 0.8119020715630885,
     "phase_index": 5,
-    "uaf": 0.0
+    "uaf": 3.20419994846689
   }
 ]

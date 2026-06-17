@@ -2,10 +2,10 @@
   {
     "factor_utilization": 1.0,
     "operation": 2000,
-    "operational_factors": 59,
+    "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.223241590214068
+    "uaf": 4.341333333333333
   },
   {
     "factor_utilization": 1.0,
@@ -13,7 +13,7 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.445730824891462
+    "uaf": 4.4594222833562585
   },
   {
     "factor_utilization": 1.0,
@@ -21,7 +21,7 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.486301369863014
+    "uaf": 4.450232558139535
   },
   {
     "factor_utilization": 1.0,
@@ -29,47 +29,47 @@
     "operational_factors": 60,
     "phase": "A1",
     "structural_factors": 11,
-    "uaf": 4.529324424647364
+    "uaf": 4.483916083916084
   },
   {
-    "factor_utilization": 0.5258941344778255,
+    "factor_utilization": 0.0963855421686747,
     "operation": 12000,
     "operational_factors": 60,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 0.5261627906976745
+    "uaf": 0.5014245014245015
   },
   {
-    "factor_utilization": 0.5212492869366799,
+    "factor_utilization": 0.07531962201222901,
     "operation": 14000,
     "operational_factors": 60,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 0.46273291925465837
+    "uaf": 0.4020771513353116
   },
   {
-    "factor_utilization": 0.5220461920213781,
+    "factor_utilization": 0.07261217650344443,
     "operation": 16000,
     "operational_factors": 32,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 0.4652567975830816
+    "uaf": 0.38235294117647056
   },
   {
-    "factor_utilization": 0.5207794075352316,
+    "factor_utilization": 0.06441631504922644,
     "operation": 18000,
-    "operational_factors": 23,
+    "operational_factors": 17,
     "phase": "B1",
     "structural_factors": 11,
-    "uaf": 0.43263473053892215
+    "uaf": 0.3395107487027428
   },
   {
     "factor_utilization": 1.0,
     "operation": 22000,
-    "operational_factors": 58,
+    "operational_factors": 60,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 3.607843137254902
+    "uaf": 3.565597667638484
   },
   {
     "factor_utilization": 1.0,
@@ -77,7 +77,7 @@
     "operational_factors": 60,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 3.774891774891775
+    "uaf": 3.875730994152047
   },
   {
     "factor_utilization": 1.0,
@@ -85,7 +85,7 @@
     "operational_factors": 60,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 3.7974683544303796
+    "uaf": 3.8991354466858787
   },
   {
     "factor_utilization": 1.0,
@@ -93,38 +93,38 @@
     "operational_factors": 60,
     "phase": "A2",
     "structural_factors": 11,
-    "uaf": 3.831254585473221
+    "uaf": 3.94640234948605
   },
   {
-    "factor_utilization": 0.5148543409287568,
+    "factor_utilization": 0.08414766558089033,
     "operation": 32000,
     "operational_factors": 60,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 0.322884012539185
+    "uaf": 0.49363057324840764
   },
   {
-    "factor_utilization": 0.5147123407992973,
+    "factor_utilization": 0.08178336980306346,
     "operation": 34000,
-    "operational_factors": 28,
+    "operational_factors": 39,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 0.29300291545189505
+    "uaf": 0.4642857142857143
   },
   {
-    "factor_utilization": 0.5162075343132483,
+    "factor_utilization": 0.07011070110701106,
     "operation": 36000,
-    "operational_factors": 28,
+    "operational_factors": 39,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 0.3229873908826382
+    "uaf": 0.39542143600416235
   },
   {
-    "factor_utilization": 0.5151359671626475,
+    "factor_utilization": 0.06733865322693545,
     "operation": 38000,
-    "operational_factors": 20,
+    "operational_factors": 21,
     "phase": "B2",
     "structural_factors": 11,
-    "uaf": 0.29797979797979796
+    "uaf": 0.3592233009708738
   }
 ]

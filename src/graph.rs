@@ -226,10 +226,11 @@ impl FactorGraph {
 
         let (result, used_rows) = self.eval_filter_with_fallback(filter);
 
-        metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
         metrics.total_queries.fetch_add(1, Ordering::Relaxed);
         if used_rows {
             metrics.row_ops.fetch_add(1, Ordering::Relaxed);
+        } else {
+            metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
         }
 
         self.record_factor_access_for_filter(filter);

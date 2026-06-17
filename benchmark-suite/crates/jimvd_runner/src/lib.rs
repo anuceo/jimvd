@@ -1,5 +1,6 @@
 use anyhow::Result;
 use data_generator::{User, clearance_name, dept_name, region_name, role_name};
+use jimvd::cover::GreedyCover;
 use jimvd::graph::{FactorGraph, MultiTableGraph};
 use jimvd::metrics::Metrics as JimMetrics;
 use jimvd::types::{Delta, DeltaType, QueryFilter};
@@ -93,7 +94,38 @@ impl DatabaseRunner for JimvdRunner {
             let delta = self.make_delta(DeltaType::Insert, details);
             self.graph.apply_delta("users", &delta, &self.jmetrics);
         }
-        log::info!("jimvd_runner: loaded {} users", users.len());
+        // Build structural factors over IAM attributes only (role/region/department).
+        // Clearance and tenant are intentionally left un-factorised so that Compliance,
+        // Tenant, and Security phases exercise the cold-start row-scan path.
+        const IAM_ATTRS: &[&str] = &["role", "region", "department"];
+        let seed: Vec<(u32, std::collections::HashMap<String, String>)> = self
+            .graph
+            .tables
+            .get("users")
+            .map(|g| {
+                g.objects
+                    .iter()
+                    .map(|(&oid, props)| {
+                        let iam: std::collections::HashMap<String, String> = props
+                            .iter()
+                            .filter(|(k, _)| IAM_ATTRS.contains(&k.as_str()))
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+                        (oid, iam)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let n = seed.len();
+        let mut cover = GreedyCover::new(seed);
+        let factors = cover.build_factors();
+        let f = factors.len();
+        if let Some(g) = self.graph.tables.get_mut("users") {
+            for factor in factors {
+                g.add_factor(factor);
+            }
+        }
+        log::info!("jimvd_runner: loaded {} users → {} structural factors", n, f);
         Ok(())
     }
 
@@ -136,9 +168,20 @@ impl DatabaseRunner for JimvdRunner {
                 self.graph.apply_delta("users", &delta, &self.jmetrics);
             }
             Operation::Update { user_id, attribute, new_value } => {
-                let mut details = serde_json::json!({ "id": *user_id as u32 });
-                details[attribute.as_str()] = serde_json::Value::String(new_value.clone());
-                let delta = self.make_delta(DeltaType::Update, details);
+                let existing: std::collections::HashMap<String, String> = self
+                    .graph
+                    .tables
+                    .get("users")
+                    .and_then(|g| g.objects.get(&(*user_id as u32)))
+                    .cloned()
+                    .unwrap_or_default();
+                let mut details = serde_json::Map::new();
+                details.insert("id".to_string(), serde_json::Value::Number((*user_id as u32).into()));
+                for (k, v) in existing {
+                    details.insert(k, serde_json::Value::String(v));
+                }
+                details.insert(attribute.clone(), serde_json::Value::String(new_value.clone()));
+                let delta = self.make_delta(DeltaType::Update, serde_json::Value::Object(details));
                 self.graph.apply_delta("users", &delta, &self.jmetrics);
             }
             Operation::Delete { user_id } => {
