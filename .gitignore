@@ -1,5 +1,6 @@
 /target/
 /jimvd/target/
+benchmark-suite/target/
 data/*.json
 data/*_metrics.png
 data/*_lifetimes.png
