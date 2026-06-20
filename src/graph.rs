@@ -18,6 +18,8 @@ pub struct FactorGraph {
     pub live_ids: HashSet<ObjectId>,
     /// Per-object properties not covered by any factor (usually empty)
     pub overflow: HashMap<ObjectId, HashMap<String, String>>,
+    /// All attribute names ever inserted; enables O(1) short-circuit for unknown attrs.
+    pub known_attrs: HashSet<String>,
 
     // adaptive materialisation
     pub conjunction_hits: HashMap<String, u64>,
@@ -40,6 +42,7 @@ impl FactorGraph {
             intent_index: HashMap::new(),
             live_ids: HashSet::new(),
             overflow: HashMap::new(),
+            known_attrs: HashSet::new(),
             conjunction_hits: HashMap::new(),
             factor_last_access: HashMap::new(),
             current_tick: 0,
@@ -95,6 +98,9 @@ impl FactorGraph {
         }
         for prop in &factor.intent {
             self.bpi.entry(prop.clone()).or_default().insert(factor.id);
+            if let Some((attr, _)) = prop.split_once('=') {
+                self.known_attrs.insert(attr.to_string());
+            }
         }
         let mut ikey = factor.intent.clone();
         ikey.sort();
@@ -168,6 +174,9 @@ impl FactorGraph {
         let obj_id = delta.get_object_id();
         let props = delta.get_properties();
         self.live_ids.insert(obj_id);
+        for k in props.keys() {
+            self.known_attrs.insert(k.clone());
+        }
 
         let atoms: HashSet<String> = props.iter()
             .map(|(k, v)| format!("{}={}", k, v))
@@ -333,8 +342,11 @@ impl FactorGraph {
                         }
                     }
                     (result, false)
+                } else if !self.known_attrs.contains(attribute.as_str()) {
+                    // Attribute not present in this table — skip the O(n) scan entirely.
+                    (HashSet::new(), false)
                 } else {
-                    // Not in factor space — scan live objects via reconstruction
+                    // Attribute exists but value not factorized — scan live objects.
                     let mut result = HashSet::new();
                     for &id in &self.live_ids {
                         let props = self.reconstruct_object(id);
