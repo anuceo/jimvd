@@ -49,24 +49,28 @@ impl DatabaseRunner for DuckdbRunner {
                 "CREATE TABLE IF NOT EXISTS users (
                     id BIGINT PRIMARY KEY,
                     tenant INTEGER,
-                    department SMALLINT,
-                    role SMALLINT,
-                    region SMALLINT,
-                    clearance SMALLINT,
-                    manager BIGINT
+                    department VARCHAR,
+                    role VARCHAR,
+                    region VARCHAR,
+                    clearance VARCHAR,
+                    manager BIGINT,
+                    policy VARCHAR,
+                    feature VARCHAR
                 )",
             )?;
             for u in users {
                 self.conn.execute(
-                    "INSERT OR IGNORE INTO users VALUES (?,?,?,?,?,?,?)",
+                    "INSERT OR IGNORE INTO users VALUES (?,?,?,?,?,?,?,?,?)",
                     duckdb::params![
                         u.id as i64,
                         u.tenant as i32,
-                        u.department as i16,
-                        u.role as i16,
-                        u.region as i16,
-                        u.clearance as i16,
+                        data_generator::dept_name(u.department),
+                        data_generator::role_name(u.role),
+                        data_generator::region_name(u.region),
+                        data_generator::clearance_name(u.clearance),
                         u.manager.map(|m| m as i64),
+                        Option::<String>::None,
+                        Option::<String>::None,
                     ],
                 )?;
             }
@@ -86,24 +90,28 @@ impl DatabaseRunner for DuckdbRunner {
                 "CREATE TABLE IF NOT EXISTS {} (
                     id BIGINT PRIMARY KEY,
                     tenant INTEGER,
-                    department SMALLINT,
-                    role SMALLINT,
-                    region SMALLINT,
-                    clearance SMALLINT,
-                    manager BIGINT
+                    department VARCHAR,
+                    role VARCHAR,
+                    region VARCHAR,
+                    clearance VARCHAR,
+                    manager BIGINT,
+                    policy VARCHAR,
+                    feature VARCHAR
                 )", table
             ))?;
             for u in users {
                 self.conn.execute(
-                    &format!("INSERT OR IGNORE INTO {} VALUES (?,?,?,?,?,?,?)", table),
+                    &format!("INSERT OR IGNORE INTO {} VALUES (?,?,?,?,?,?,?,?,?)", table),
                     duckdb::params![
                         u.id as i64,
                         u.tenant as i32,
-                        u.department as i16,
-                        u.role as i16,
-                        u.region as i16,
-                        u.clearance as i16,
+                        data_generator::dept_name(u.department),
+                        data_generator::role_name(u.role),
+                        data_generator::region_name(u.region),
+                        data_generator::clearance_name(u.clearance),
                         u.manager.map(|m| m as i64),
+                        Option::<String>::None,
+                        Option::<String>::None,
                     ],
                 )?;
             }
@@ -159,15 +167,17 @@ impl DatabaseRunner for DuckdbRunner {
                 }
                 Operation::Insert { user } => {
                     self.conn.execute(
-                        "INSERT OR IGNORE INTO users VALUES (?,?,?,?,?,?,?)",
+                        "INSERT OR IGNORE INTO users VALUES (?,?,?,?,?,?,?,?,?)",
                         duckdb::params![
                             user.id as i64,
                             user.tenant as i32,
-                            user.department as i16,
-                            user.role as i16,
-                            user.region as i16,
-                            user.clearance as i16,
+                            data_generator::dept_name(user.department),
+                            data_generator::role_name(user.role),
+                            data_generator::region_name(user.region),
+                            data_generator::clearance_name(user.clearance),
                             user.manager.map(|m| m as i64),
+                            Option::<String>::None,
+                            Option::<String>::None,
                         ],
                     )?;
                 }
