@@ -2,6 +2,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use data_generator::CorrelationConfig;
 use serde::Deserialize;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use workload_generator::{Phase, WorkloadConfig};
 
 #[derive(Parser)]
@@ -117,6 +119,19 @@ fn main() -> Result<()> {
     env_logger::init();
     let cli = Cli::parse();
     std::fs::create_dir_all("results")?;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    {
+        let stop2 = stop.clone();
+        ctrlc::set_handler(move || {
+            if stop2.swap(true, Ordering::Relaxed) {
+                // Second Ctrl+C: hard exit.
+                eprintln!("\nForce exit.");
+                std::process::exit(130);
+            }
+            eprintln!("\nStop signal received — finishing current snapshot, then writing partial results…");
+        })?;
+    }
 
     match cli.command {
         Command::ScalingWall { max_scale } => {
@@ -381,6 +396,7 @@ fn main() -> Result<()> {
                 println!("\n--- Running JimVD ({} users) ---", dataset.len());
                 let result = benchmark_orchestrator::main_event::run_main_event(
                     &mut runner, &dataset, ops_per_phase, snapshot_interval, adaptation_threshold,
+                    stop.clone(),
                 );
                 for s in &result.snapshots {
                     all_rows.push(report_generator::PhaseMetricRow {
@@ -397,15 +413,22 @@ fn main() -> Result<()> {
                         storage_bytes:      s.metrics.storage_bytes,
                     });
                 }
-                println!("[JimVD] completed in {:.1}s", result.total_elapsed_secs);
+                if result.interrupted {
+                    println!("[JimVD] interrupted after {:.1}s — {} snapshots captured",
+                        result.total_elapsed_secs, result.snapshots.len());
+                } else {
+                    println!("[JimVD] completed in {:.1}s", result.total_elapsed_secs);
+                }
                 all_results.push(result);
             }
 
             // ── DuckDB ─────────────────────────────────────────────────────
+            if !stop.load(Ordering::Relaxed) {
             if let Ok(mut runner) = duckdb_runner::DuckdbRunner::new() {
                 println!("\n--- Running DuckDB ({} users) ---", dataset.len());
                 let result = benchmark_orchestrator::main_event::run_main_event(
                     &mut runner, &dataset, ops_per_phase, snapshot_interval, adaptation_threshold,
+                    stop.clone(),
                 );
                 for s in &result.snapshots {
                     all_rows.push(report_generator::PhaseMetricRow {
@@ -422,10 +445,18 @@ fn main() -> Result<()> {
                         storage_bytes:      s.metrics.storage_bytes,
                     });
                 }
-                println!("[DuckDB] completed in {:.1}s", result.total_elapsed_secs);
+                if result.interrupted {
+                    println!("[DuckDB] interrupted after {:.1}s — {} snapshots captured",
+                        result.total_elapsed_secs, result.snapshots.len());
+                } else {
+                    println!("[DuckDB] completed in {:.1}s", result.total_elapsed_secs);
+                }
                 all_results.push(result);
             } else {
                 println!("\n[DuckDB] not available — skipping");
+            }
+            } else {
+                println!("\n[DuckDB] skipped — stop signal received");
             }
 
             // ── Write outputs ──────────────────────────────────────────────
@@ -493,6 +524,7 @@ fn main() -> Result<()> {
                     let mut r = $runner;
                     let result = benchmark_orchestrator::main_event::run_main_event(
                         &mut r, &dataset, SMOKE_OPS_PER_PHASE, SMOKE_SNAPSHOT, 0.5,
+                        stop.clone(),
                     );
                     if result.snapshots.is_empty() {
                         println!("  [FAIL] {} — no snapshots produced", $label);

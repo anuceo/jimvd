@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use runner_api::DatabaseRunner;
 use workload_generator::{Phase, WorkloadConfig, WorkloadGenerator};
@@ -35,6 +37,8 @@ pub struct MainEventResult {
     pub snapshots:            Vec<PhaseSnapshot>,
     pub adaptation_latencies: Vec<AdaptationRecord>,
     pub total_elapsed_secs:   f64,
+    /// True if the run was cut short by a stop signal.
+    pub interrupted:          bool,
 }
 
 pub fn run_main_event(
@@ -43,6 +47,7 @@ pub fn run_main_event(
     ops_per_phase:        usize,
     snapshot_interval:    usize,
     adaptation_threshold: f64,
+    stop:                 Arc<AtomicBool>,
 ) -> MainEventResult {
     let runner_name = runner.name().to_string();
     let wall = Instant::now();
@@ -54,6 +59,7 @@ pub fn run_main_event(
             snapshots: vec![],
             adaptation_latencies: vec![],
             total_elapsed_secs: wall.elapsed().as_secs_f64(),
+            interrupted: false,
         };
     }
 
@@ -61,6 +67,7 @@ pub fn run_main_event(
     let mut snapshots = Vec::new();
     let mut adaptation_latencies = Vec::new();
     let mut total_ops = 0usize;
+    let mut interrupted = false;
     let wl_cfg = WorkloadConfig {
         read_ratio:       0.6,
         write_ratio:      0.4,
@@ -69,7 +76,7 @@ pub fn run_main_event(
         rng_seed:         0,
     };
 
-    for (phase_index, phase) in schedule.into_iter().enumerate() {
+    'phases: for (phase_index, phase) in schedule.into_iter().enumerate() {
         let phase_label = format!("{:?}", phase);
         log::info!("[{}] phase {}: {:?} ({} ops)", runner_name, phase_index, phase, ops_per_phase);
         runner.reset_metrics();
@@ -78,6 +85,29 @@ pub fn run_main_event(
         let mut adaptation_latency: Option<usize> = None;
 
         for i in 1..=ops_per_phase {
+            if stop.load(Ordering::Relaxed) {
+                log::warn!("[{}] stop signal received at phase {} op {}", runner_name, phase_index, i);
+                // Flush a snapshot at the interruption point.
+                let m = runner.collect_metrics();
+                if adaptation_latency.is_none() && m.factor_utilization >= adaptation_threshold {
+                    adaptation_latency = Some(i);
+                }
+                snapshots.push(PhaseSnapshot {
+                    phase:          phase_label.clone(),
+                    phase_index,
+                    ops_into_phase: i,
+                    total_ops:      total_ops + i,
+                    metrics:        m,
+                });
+                adaptation_latencies.push(AdaptationRecord {
+                    phase:       phase_label,
+                    phase_index,
+                    latency_ops: adaptation_latency,
+                });
+                interrupted = true;
+                break 'phases;
+            }
+
             let op = wl.next_operation();
             if let Err(e) = runner.execute(&op) {
                 log::warn!("[{}] execute error: {}", runner_name, e);
@@ -97,6 +127,8 @@ pub fn run_main_event(
                 });
             }
         }
+
+        if interrupted { break; }
 
         // Final snapshot for the phase even if it doesn't land on the interval.
         let m = runner.collect_metrics();
@@ -124,5 +156,6 @@ pub fn run_main_event(
         snapshots,
         adaptation_latencies,
         total_elapsed_secs: wall.elapsed().as_secs_f64(),
+        interrupted,
     }
 }
