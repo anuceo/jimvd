@@ -132,7 +132,7 @@ impl FactorGraph {
                 for fid in factor_ids {
                     if let Some(factor_mut) = self.factors.get_mut(&fid) {
                         if !factor_mut.extent.contains(&obj_id) && factor_is_satisfied_by(factor_mut, &props) {
-                            factor_mut.extent.push(obj_id);
+                            factor_mut.extent.insert(obj_id);
                             self.boi.entry(obj_id).or_default().insert(fid);
                             metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
                             metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
@@ -162,7 +162,7 @@ impl FactorGraph {
                     if let Some(factor) = self.factors.get_mut(&fid) {
                         if factor.extent.contains(&obj_id) {
                             if !factor_is_satisfied_by(factor, &new_props) {
-                                factor.extent.retain(|id| *id != obj_id);
+                                factor.extent.remove(&obj_id);
                                 if let Some(boi_set) = self.boi.get_mut(&obj_id) {
                                     boi_set.remove(&fid);
                                 }
@@ -182,7 +182,7 @@ impl FactorGraph {
                 for fid in factor_ids {
                     if let Some(factor) = self.factors.get_mut(&fid) {
                         if !factor.extent.contains(&obj_id) && factor_is_satisfied_by(factor, &new_props) {
-                            factor.extent.push(obj_id);
+                            factor.extent.insert(obj_id);
                             self.boi.entry(obj_id).or_default().insert(fid);
                             metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
                             metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
@@ -203,7 +203,7 @@ impl FactorGraph {
             let factor_ids: Vec<u64> = factor_ids.iter().cloned().collect();
             for fid in factor_ids {
                 if let Some(factor) = self.factors.get_mut(&fid) {
-                    factor.extent.retain(|id| *id != obj_id);
+                    factor.extent.remove(&obj_id);
                     metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
                     metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                     self.record_factor_access(fid);
@@ -404,10 +404,9 @@ impl FactorGraph {
             });
             if !already_exists {
                 let new_id = self.factors.keys().max().unwrap_or(&0) + 1;
-                let extent_vec: Vec<ObjectId> = current_extent.iter().cloned().collect();
                 let factor = Factor {
                     id: new_id,
-                    extent: extent_vec,
+                    extent: current_extent.clone(),
                     intent: atoms,
                     is_structural: false,
                     access_count: 0,

@@ -41,7 +41,7 @@ impl GreedyCover {
 
     /// Find the largest rectangle that covers uncovered pairs.
     /// Returns (extent, intent) or None if nothing left.
-    fn largest_rectangle(&self) -> Option<(Vec<ObjectId>, Vec<PropertyAtom>)> {
+    fn largest_rectangle(&self) -> Option<(HashSet<ObjectId>, Vec<PropertyAtom>)> {
         if self.uncovered.is_empty() {
             return None;
         }
@@ -82,7 +82,7 @@ impl GreedyCover {
         }
 
         // Remove the newly covered pairs from uncovered (we'll do that in build_factors)
-        Some((extent.into_iter().collect(), intent))
+        Some((extent, intent))
     }
 
     /// Build factors greedily until everything is covered.
@@ -117,7 +117,7 @@ impl GreedyCover {
 
             factors.push(Factor {
                 id: next_id,
-                extent: vec![pair.0],
+                extent: std::iter::once(pair.0).collect(),
                 intent: vec![pair.1],
                 is_structural: true,
                 access_count: 0,

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A property atom, e.g. "Role=Admin"
 pub type PropertyAtom = String;
@@ -12,7 +12,7 @@ pub type ObjectId = u32;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Factor {
     pub id: u64,
-    pub extent: Vec<ObjectId>,   // will be replaced with bitmap later
+    pub extent: HashSet<ObjectId>,
     pub intent: Vec<PropertyAtom>,
     pub is_structural: bool,     // true = from factorization; false = operational/materialized
     pub access_count: u64,
