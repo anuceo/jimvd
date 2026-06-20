@@ -31,6 +31,7 @@ fn main() -> Result<()> {
     runner.total_ops_executed = 0;
 
     println!("=== Extended Adversarial Test ===");
+    println!("[Init] rng_seed={}", first_phase.workload.rng_seed);
 
     let mut all_snapshots: Vec<serde_json::Value> = Vec::new();
     let mut adaptation_latencies: Vec<(String, Option<usize>)> = Vec::new();
@@ -54,10 +55,14 @@ fn main() -> Result<()> {
                 "operation": op_idx,
                 "phase": report.phase_name,
                 "factor_utilization": report.factor_utilization,
+                "query_factor_utilization": report.query_factor_utilization,
                 "uaf": report.uaf,
                 "structural_factors": report.structural_factor_count,
                 "operational_factors": report.operational_factor_count,
                 "evicted_factors": report.evicted_factors,
+                "memory_bytes": report.memory_bytes,
+                "storage_bytes": report.storage_bytes,
+                "cover_time_ms": report.cover_time_ms,
             }));
         }
 

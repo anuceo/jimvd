@@ -2,6 +2,39 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum AttributeDef {
+    Simple(Vec<String>),
+    Extended(AttributeSpec),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
+pub enum AttributeSpec {
+    #[serde(rename = "categorical")]
+    Categorical {
+        values: Vec<String>,
+        #[serde(default)]
+        weights: Option<Vec<f64>>,
+        #[serde(default)]
+        null_probability: f64,
+    },
+    #[serde(rename = "continuous")]
+    Continuous {
+        min: i64,
+        max: i64,
+        #[serde(default)]
+        null_probability: f64,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HotValue {
+    pub value: String,
+    pub weight: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct AdaptationConfig {
     #[serde(default = "default_materialization_threshold")]
     pub materialization_threshold: u64,
@@ -31,11 +64,13 @@ pub struct WorkloadConfig {
     pub run_options: RunOptions,
     #[serde(default)]
     pub adaptation: AdaptationConfig,
+    #[serde(default)]
+    pub rng_seed: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct TableSpec {
-    pub attributes: HashMap<String, Option<Vec<String>>>,
+    pub attributes: HashMap<String, AttributeDef>,
     pub initial_objects: usize,
     #[serde(default = "default_correlation")]
     pub correlation_hint: String,
@@ -62,6 +97,8 @@ pub enum QueryTemplate {
         values: Vec<String>,
         #[serde(default = "default_query_table")]
         table: String,
+        #[serde(default)]
+        hot_values: Vec<HotValue>,
     },
     #[serde(rename = "and")]
     And {
@@ -79,6 +116,8 @@ pub enum QueryTemplate {
         values: Vec<String>,
         #[serde(default = "default_query_table")]
         table: String,
+        #[serde(default)]
+        hot_values: Vec<HotValue>,
     },
     #[serde(rename = "join")]
     Join {
@@ -102,6 +141,8 @@ pub struct WriteMix {
     /// Which table writes go to (defaults to "employees" for backward compat).
     #[serde(default = "default_query_table")]
     pub table: String,
+    #[serde(default)]
+    pub attribute_weights: Option<HashMap<String, f64>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

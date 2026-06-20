@@ -55,9 +55,9 @@ impl Metrics {
 }
 
 pub fn get_current_memory_usage() -> u64 {
-    use sysinfo::{Pid, System};
+    use sysinfo::{Pid, ProcessesToUpdate, System};
     let pid = Pid::from(std::process::id() as usize);
     let mut sys = System::new();
-    sys.refresh_process(pid);
-    sys.process(pid).map(|p| p.memory()).unwrap_or(0)
+    sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), false);
+    sys.process(pid).map(|p: &sysinfo::Process| p.memory()).unwrap_or(0)
 }

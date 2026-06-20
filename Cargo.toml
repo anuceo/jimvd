@@ -16,6 +16,7 @@ env_logger = "0.11.10"
 clap = { version = "4", features = ["derive"] }
 bitvec = "1"
 rand = "0.10.1"
+sysinfo = "0.33"
 
 
 [[bin]]

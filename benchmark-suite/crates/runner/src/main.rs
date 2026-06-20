@@ -144,6 +144,25 @@ fn main() -> Result<()> {
                     r.metrics.p50_latency_us, r.metrics.p99_latency_us,
                     r.metrics.uaf);
             }
+
+            // Also run DuckDB for comparison if available
+            if let Ok(mut ddb) = duckdb_runner::DuckdbRunner::new() {
+                let ddb_results = benchmark_orchestrator::scaling_wall::run_scaling_wall(
+                    &mut ddb, &corr, &wl, Phase::IAM, scale,
+                );
+                println!("\n=== DuckDB Scaling Wall ===");
+                println!("{:<12} {:<12} {:<10} {:<10}", "Runner", "Scale", "P50(µs)", "P99(µs)");
+                for r in &ddb_results {
+                    println!("{:<12} {:<12} {:<10} {:<10}",
+                        r.runner_name, r.scale,
+                        r.metrics.p50_latency_us, r.metrics.p99_latency_us);
+                }
+                let ddb_json: Vec<serde_json::Value> = ddb_results.iter().map(|r| serde_json::json!({
+                    "scale": r.scale, "runner": r.runner_name,
+                    "p50_us": r.metrics.p50_latency_us, "p99_us": r.metrics.p99_latency_us,
+                })).collect();
+                report_generator::write_json("results/scaling_wall_duckdb.json", &ddb_json)?;
+            }
         }
 
         Command::DriftSim { ops_per_phase } => {
@@ -264,6 +283,15 @@ fn main() -> Result<()> {
                 "jimvd", sw_results.iter().map(|r| (r.scale, r.metrics.uaf)).collect(),
             )];
             report_generator::plot_uaf_vs_scale("results/uaf_vs_scale.png", &sw_series)?;
+            if let Ok(mut ddb) = duckdb_runner::DuckdbRunner::new() {
+                let ddb_sw = benchmark_orchestrator::scaling_wall::run_scaling_wall(
+                    &mut ddb, &corr, &wl, Phase::IAM, 10_000,
+                );
+                for r in &ddb_sw {
+                    println!("DuckDB {:<12} {:<10} {:<10} {:.4}",
+                        r.scale, r.metrics.p50_latency_us, r.metrics.p99_latency_us, r.metrics.uaf);
+                }
+            }
             println!("{:<12} {:<10} {:<10} {:<10} {:<8}", "Scale", "P50(µs)", "P95(µs)", "P99(µs)", "UAF");
             for r in &sw_results {
                 println!("{:<12} {:<10} {:<10} {:<10} {:.4}",

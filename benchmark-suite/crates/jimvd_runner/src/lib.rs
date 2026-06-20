@@ -162,7 +162,7 @@ impl DatabaseRunner for JimvdRunner {
 
     fn execute(&mut self, op: &Operation) -> Result<OpResult> {
         self.ensure_table();
-        let before_nodes = self.jmetrics.nodes_touched_by_updates.load(Ordering::Relaxed);
+        let before_nodes = self.jmetrics.write_propagation_nodes.load(Ordering::Relaxed);
         let start = std::time::Instant::now();
 
         match op {
@@ -233,7 +233,7 @@ impl DatabaseRunner for JimvdRunner {
         let latency = start.elapsed();
         self.latencies.record(latency);
 
-        let after_nodes = self.jmetrics.nodes_touched_by_updates.load(Ordering::Relaxed);
+        let after_nodes = self.jmetrics.write_propagation_nodes.load(Ordering::Relaxed);
         let nodes_touched = after_nodes.saturating_sub(before_nodes) as usize;
         if nodes_touched > 0 {
             self.uaf_tracker.record_update(nodes_touched);
@@ -246,19 +246,23 @@ impl DatabaseRunner for JimvdRunner {
         let report = self.graph.gather_metrics(&self.jmetrics);
         let mut hist = self.latencies.clone();
         metrics::Metrics {
-            p50_latency_us:     hist.percentile(50.0),
-            p95_latency_us:     hist.percentile(95.0),
-            p99_latency_us:     hist.percentile(99.0),
-            throughput_ops_sec: 0.0,
-            storage_bytes:      0,
-            metadata_bytes:     0,
-            factor_utilization: report.factor_utilization,
-            uaf:                self.uaf_tracker.uaf(),
-            factor_count:       report.structural_factor_count + report.operational_factor_count,
-            graph_nodes:        report.structural_factor_count + report.operational_factor_count,
-            memory_peak_bytes:  0,
-            join_fallbacks:     self.jmetrics.join_fallbacks.load(Ordering::Relaxed),
-            join_queries:       self.join_queries,
+            p50_latency_us:          hist.percentile(50.0),
+            p95_latency_us:          hist.percentile(95.0),
+            p99_latency_us:          hist.percentile(99.0),
+            throughput_ops_sec:      0.0,
+            storage_bytes:           report.storage_bytes,
+            metadata_bytes:          0,
+            factor_utilization:      report.factor_utilization,
+            query_factor_ops:        report.query_factor_ops,
+            write_factor_ops:        report.write_factor_ops,
+            write_propagation_nodes: report.write_propagation_nodes,
+            query_factor_utilization: report.query_factor_utilization,
+            uaf:                     self.uaf_tracker.uaf(),
+            factor_count:            report.structural_factor_count + report.operational_factor_count,
+            graph_nodes:             report.structural_factor_count + report.operational_factor_count,
+            memory_peak_bytes:       report.memory_bytes,
+            join_fallbacks:          self.jmetrics.join_fallbacks.load(Ordering::Relaxed),
+            join_queries:            self.join_queries,
         }
     }
 

@@ -79,6 +79,43 @@ impl DatabaseRunner for DuckdbRunner {
         }
     }
 
+    fn load_table(&mut self, table: &str, users: &[data_generator::User]) -> Result<()> {
+        #[cfg(feature = "duckdb")]
+        {
+            self.conn.execute_batch(&format!(
+                "CREATE TABLE IF NOT EXISTS {} (
+                    id BIGINT PRIMARY KEY,
+                    tenant INTEGER,
+                    department SMALLINT,
+                    role SMALLINT,
+                    region SMALLINT,
+                    clearance SMALLINT,
+                    manager BIGINT
+                )", table
+            ))?;
+            for u in users {
+                self.conn.execute(
+                    &format!("INSERT OR IGNORE INTO {} VALUES (?,?,?,?,?,?,?)", table),
+                    duckdb::params![
+                        u.id as i64,
+                        u.tenant as i32,
+                        u.department as i16,
+                        u.role as i16,
+                        u.region as i16,
+                        u.clearance as i16,
+                        u.manager.map(|m| m as i64),
+                    ],
+                )?;
+            }
+            return Ok(());
+        }
+        #[cfg(not(feature = "duckdb"))]
+        {
+            let _ = (table, users);
+            Err(anyhow!("duckdb feature not enabled"))
+        }
+    }
+
     fn execute(&mut self, op: &Operation) -> Result<OpResult> {
         #[cfg(feature = "duckdb")]
         {

@@ -25,6 +25,8 @@ pub struct WorkloadConfig {
     pub write_ratio:      f64,
     pub join_ratio:       f64,
     pub total_operations: usize,
+    #[serde(default)]
+    pub rng_seed:         u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

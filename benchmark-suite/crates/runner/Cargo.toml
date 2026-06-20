@@ -11,6 +11,7 @@ path = "src/main.rs"
 benchmark_orchestrator = { path = "../benchmark_orchestrator" }
 report_generator       = { path = "../report_generator" }
 jimvd_runner           = { path = "../jimvd_runner" }
+duckdb_runner          = { path = "../duckdb_runner" }
 data_generator         = { path = "../data_generator" }
 workload_generator     = { path = "../workload_generator" }
 runner_api             = { path = "../runner_api" }

@@ -4,7 +4,7 @@ use jimvd::{
     graph::{FactorGraph, MultiTableGraph},
     metrics::Metrics,
     types::{Delta, DeltaType, Query, QueryFilter},
-    workload::WorkloadConfig,
+    workload::{AttributeDef, AttributeSpec, WorkloadConfig},
 };
 use rand::{Rng, RngExt, SeedableRng};
 use std::collections::HashMap;
@@ -40,11 +40,10 @@ fn main() -> Result<()> {
             let oid = next_oid;
             next_oid += 1;
             let mut props = HashMap::new();
-            for (attr, maybe_vals) in &spec.attributes {
-                if let Some(vals) = maybe_vals {
-                    if !vals.is_empty() {
-                        props.insert(attr.clone(), vals[rng.random_range(0..vals.len())].clone());
-                    }
+            for (attr, def) in &spec.attributes {
+                let vals = attr_def_values(def);
+                if !vals.is_empty() {
+                    props.insert(attr.clone(), vals[rng.random_range(0..vals.len())].clone());
                 }
             }
             raw_data.push((oid, props));
@@ -55,7 +54,7 @@ fn main() -> Result<()> {
             match &spec.factorize_attributes {
                 Some(list) => list.iter().cloned().collect(),
                 None => spec.attributes.iter()
-                    .filter(|(_, v)| v.is_some())
+                    .filter(|(_, def)| !matches!(def, AttributeDef::Extended(AttributeSpec::Continuous { .. })))
                     .map(|(k, _)| k.clone())
                     .collect(),
             };
@@ -107,7 +106,8 @@ fn main() -> Result<()> {
                     let spec = &config.tables[&table];
                     let mut filters = Vec::new();
                     for attr in &attrs {
-                        if let Some(Some(vals)) = spec.attributes.get(attr) {
+                        if let Some(def) = spec.attributes.get(attr) {
+                            let vals = attr_def_values(def);
                             if !vals.is_empty() {
                                 let val = vals[rng.random_range(0..vals.len())].clone();
                                 filters.push(QueryFilter::Eq { attribute: attr.clone(), value: val });
@@ -163,9 +163,12 @@ fn main() -> Result<()> {
                 let mut kv = serde_json::Map::new();
                 kv.insert("id".into(), serde_json::Value::from(new_id));
                 for attr in &wm.attributes {
-                    if let Some(Some(vals)) = spec.attributes.get(attr) {
-                        let v = vals[rng.random_range(0..vals.len())].clone();
-                        kv.insert(attr.clone(), serde_json::Value::String(v));
+                    if let Some(def) = spec.attributes.get(attr) {
+                        let vals = attr_def_values(def);
+                        if !vals.is_empty() {
+                            let v = vals[rng.random_range(0..vals.len())].clone();
+                            kv.insert(attr.clone(), serde_json::Value::String(v));
+                        }
                     }
                 }
                 let delta = make_delta(DeltaType::Insert, tbl, kv);
@@ -179,7 +182,9 @@ fn main() -> Result<()> {
                     m_graph.table(tbl).objects.get(&target).cloned().unwrap_or_default();
                 let spec = &config.tables[tbl];
                 let attr = &wm.attributes[rng.random_range(0..wm.attributes.len())];
-                if let Some(Some(vals)) = spec.attributes.get(attr) {
+                if let Some(def) = spec.attributes.get(attr) {
+                    let vals = attr_def_values(def);
+                    if vals.is_empty() { continue; }
                     let mut new_props = existing;
                     new_props.insert(attr.clone(), vals[rng.random_range(0..vals.len())].clone());
                     let mut kv = serde_json::Map::new();
@@ -240,7 +245,7 @@ fn main() -> Result<()> {
     println!("║      Join-Direct Benchmark Summary   ║");
     println!("╠══════════════════════════════════════╣");
     println!("║  Total queries       {:>15} ║", metrics.total_queries.load(Ordering::Relaxed));
-    println!("║  Factor ops          {:>15} ║", metrics.factor_ops.load(Ordering::Relaxed));
+    println!("║  Query factor ops    {:>15} ║", metrics.query_factor_ops.load(Ordering::Relaxed));
     println!("║  Row ops             {:>15} ║", metrics.row_ops.load(Ordering::Relaxed));
     println!("║  Factor utilization  {:>14.1}% ║", metrics.factor_utilization() * 100.0);
     println!("║  Update Ampl. Factor {:>15.2} ║", metrics.uaf());
@@ -250,6 +255,14 @@ fn main() -> Result<()> {
     println!("╚══════════════════════════════════════╝");
 
     Ok(())
+}
+
+fn attr_def_values(def: &AttributeDef) -> &[String] {
+    match def {
+        AttributeDef::Simple(vals) => vals,
+        AttributeDef::Extended(AttributeSpec::Categorical { values, .. }) => values,
+        AttributeDef::Extended(AttributeSpec::Continuous { .. }) => &[],
+    }
 }
 
 fn make_delta(dtype: DeltaType, table: &str, kv: serde_json::Map<String, serde_json::Value>) -> Delta {
@@ -278,9 +291,10 @@ fn build_filters(
                     .map(|v| v.as_str().unwrap().to_string()).collect();
                 let val = if !vals.is_empty() {
                     vals[rng.random_range(0..vals.len())].clone()
-                } else if let Some(Some(cfg_vals)) = config.tables.get(table)
+                } else if let Some(def) = config.tables.get(table)
                     .and_then(|t| t.attributes.get(&attr))
                 {
+                    let cfg_vals = attr_def_values(def);
                     if cfg_vals.is_empty() { continue; }
                     cfg_vals[rng.random_range(0..cfg_vals.len())].clone()
                 } else {

@@ -4,7 +4,7 @@ use jimvd::{
     graph::{FactorGraph, MultiTableGraph},
     metrics::Metrics,
     types::{Delta, DeltaType, Query, QueryFilter},
-    workload::WorkloadConfig,
+    workload::{AttributeDef, AttributeSpec, WorkloadConfig},
 };
 use rand::{Rng, RngExt, SeedableRng};
 use std::collections::HashMap;
@@ -40,11 +40,9 @@ fn main() -> Result<()> {
             let oid = next_oid;
             next_oid += 1;
             let mut props = HashMap::new();
-            for (attr, maybe_vals) in &spec.attributes {
-                if let Some(vals) = maybe_vals {
-                    if !vals.is_empty() {
-                        props.insert(attr.clone(), vals[rng.random_range(0..vals.len())].clone());
-                    }
+            for (attr, attr_def) in &spec.attributes {
+                if let Some(val) = attr_def_sample(attr_def, &mut rng) {
+                    props.insert(attr.clone(), val);
                 }
             }
             raw_data.push((oid, props));
@@ -54,7 +52,7 @@ fn main() -> Result<()> {
             match &spec.factorize_attributes {
                 Some(list) => list.iter().cloned().collect(),
                 None => spec.attributes.iter()
-                    .filter(|(_, v)| v.is_some())
+                    .filter(|(_, def)| matches!(def, AttributeDef::Simple(_)))
                     .map(|(k, _)| k.clone())
                     .collect(),
             };
@@ -147,9 +145,10 @@ fn main() -> Result<()> {
                 let mut kv = serde_json::Map::new();
                 kv.insert("id".into(), serde_json::Value::from(new_id));
                 for attr in &wm.attributes {
-                    if let Some(Some(vals)) = spec.attributes.get(attr) {
-                        let v = vals[rng.random_range(0..vals.len())].clone();
-                        kv.insert(attr.clone(), serde_json::Value::String(v));
+                    if let Some(def) = spec.attributes.get(attr) {
+                        if let Some(v) = attr_def_sample(def, &mut rng) {
+                            kv.insert(attr.clone(), serde_json::Value::String(v));
+                        }
                     }
                 }
                 let delta = make_delta(DeltaType::Insert, tbl, kv);
@@ -163,16 +162,18 @@ fn main() -> Result<()> {
                     m_graph.table(tbl).objects.get(&target).cloned().unwrap_or_default();
                 let spec = &config.tables[tbl];
                 let attr = &wm.attributes[rng.random_range(0..wm.attributes.len())];
-                if let Some(Some(vals)) = spec.attributes.get(attr) {
-                    let mut new_props = existing;
-                    new_props.insert(attr.clone(), vals[rng.random_range(0..vals.len())].clone());
-                    let mut kv = serde_json::Map::new();
-                    kv.insert("id".into(), serde_json::Value::from(target));
-                    for (k, v) in &new_props {
-                        kv.insert(k.clone(), serde_json::Value::String(v.clone()));
+                if let Some(def) = spec.attributes.get(attr) {
+                    if let Some(new_val) = attr_def_sample(def, &mut rng) {
+                        let mut new_props = existing;
+                        new_props.insert(attr.clone(), new_val);
+                        let mut kv = serde_json::Map::new();
+                        kv.insert("id".into(), serde_json::Value::from(target));
+                        for (k, v) in &new_props {
+                            kv.insert(k.clone(), serde_json::Value::String(v.clone()));
+                        }
+                        let delta = make_delta(DeltaType::Update, tbl, kv);
+                        m_graph.apply_delta(tbl, &delta, &metrics);
                     }
-                    let delta = make_delta(DeltaType::Update, tbl, kv);
-                    m_graph.apply_delta(tbl, &delta, &metrics);
                 }
             } else {
                 let ids: Vec<u32> = m_graph.table(tbl).objects.keys().cloned().collect();
@@ -225,7 +226,7 @@ fn main() -> Result<()> {
     println!("║   Many-to-Many Benchmark Summary     ║");
     println!("╠══════════════════════════════════════╣");
     println!("║  Total queries       {:>15} ║", metrics.total_queries.load(Ordering::Relaxed));
-    println!("║  Factor ops          {:>15} ║", metrics.factor_ops.load(Ordering::Relaxed));
+    println!("║  Query factor ops    {:>15} ║", metrics.query_factor_ops.load(Ordering::Relaxed));
     println!("║  Row ops             {:>15} ║", metrics.row_ops.load(Ordering::Relaxed));
     println!("║  Join fallbacks      {:>15} ║", metrics.join_fallbacks.load(Ordering::Relaxed));
     println!("║  Factor utilization  {:>14.1}% ║", metrics.factor_utilization() * 100.0);
@@ -264,9 +265,10 @@ fn build_filters(
                     .map(|v| v.as_str().unwrap().to_string()).collect();
                 let val = if !vals.is_empty() {
                     vals[rng.random_range(0..vals.len())].clone()
-                } else if let Some(Some(cfg_vals)) = config.tables.get(table)
+                } else if let Some(def) = config.tables.get(table)
                     .and_then(|t| t.attributes.get(&attr))
                 {
+                    let cfg_vals = attr_def_values(def);
                     if cfg_vals.is_empty() { continue; }
                     cfg_vals[rng.random_range(0..cfg_vals.len())].clone()
                 } else {
@@ -278,4 +280,27 @@ fn build_filters(
         }
     }
     filters
+}
+
+fn attr_def_values(def: &AttributeDef) -> &[String] {
+    match def {
+        AttributeDef::Simple(vals) => vals,
+        AttributeDef::Extended(AttributeSpec::Categorical { values, .. }) => values,
+        AttributeDef::Extended(AttributeSpec::Continuous { .. }) => &[],
+    }
+}
+
+fn attr_def_sample(def: &AttributeDef, rng: &mut impl rand::Rng) -> Option<String> {
+    use rand::RngExt;
+    let vals = attr_def_values(def);
+    if vals.is_empty() {
+        match def {
+            AttributeDef::Extended(AttributeSpec::Continuous { min, max, .. }) => {
+                Some(rng.random_range(*min..=*max).to_string())
+            }
+            _ => None,
+        }
+    } else {
+        Some(vals[rng.random_range(0..vals.len())].clone())
+    }
 }

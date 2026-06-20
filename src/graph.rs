@@ -134,8 +134,8 @@ impl FactorGraph {
                         if !factor_mut.extent.contains(&obj_id) && factor_is_satisfied_by(factor_mut, &props) {
                             factor_mut.extent.push(obj_id);
                             self.boi.entry(obj_id).or_default().insert(fid);
-                            metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                            metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                             self.record_factor_access(fid);
                         }
                     }
@@ -166,8 +166,8 @@ impl FactorGraph {
                                 if let Some(boi_set) = self.boi.get_mut(&obj_id) {
                                     boi_set.remove(&fid);
                                 }
-                                metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                                metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                                metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                                metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                                 self.record_factor_access(fid);
                             }
                         }
@@ -184,8 +184,8 @@ impl FactorGraph {
                         if !factor.extent.contains(&obj_id) && factor_is_satisfied_by(factor, &new_props) {
                             factor.extent.push(obj_id);
                             self.boi.entry(obj_id).or_default().insert(fid);
-                            metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                            metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                            metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                             self.record_factor_access(fid);
                         }
                     }
@@ -204,8 +204,8 @@ impl FactorGraph {
             for fid in factor_ids {
                 if let Some(factor) = self.factors.get_mut(&fid) {
                     factor.extent.retain(|id| *id != obj_id);
-                    metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
-                    metrics.nodes_touched_by_updates.fetch_add(1, Ordering::Relaxed);
+                    metrics.write_factor_ops.fetch_add(1, Ordering::Relaxed);
+                    metrics.write_propagation_nodes.fetch_add(1, Ordering::Relaxed);
                     self.record_factor_access(fid);
                 }
             }
@@ -230,7 +230,7 @@ impl FactorGraph {
         if used_rows {
             metrics.row_ops.fetch_add(1, Ordering::Relaxed);
         } else {
-            metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
+            metrics.query_factor_ops.fetch_add(1, Ordering::Relaxed);
         }
 
         self.record_factor_access_for_filter(filter);
@@ -299,7 +299,7 @@ impl FactorGraph {
         self.current_tick += 1;
 
         let result = self.eval_filter(filter);
-        metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
+        metrics.query_factor_ops.fetch_add(1, Ordering::Relaxed);
         metrics.total_queries.fetch_add(1, Ordering::Relaxed);
 
         self.record_factor_access_for_filter(filter);
@@ -481,21 +481,27 @@ impl FactorGraph {
         let structural_count = self.factors.values().filter(|f| f.is_structural).count();
         let operational_count = self.factors.values().filter(|f| !f.is_structural).count();
 
+        let storage_bytes = compute_storage_bytes(&self.factors, &self.boi, &self.bpi);
         MetricsReport {
             total_queries: metrics.total_queries.load(Ordering::Relaxed),
-            factor_ops: metrics.factor_ops.load(Ordering::Relaxed),
+            query_factor_ops: metrics.query_factor_ops.load(Ordering::Relaxed),
+            write_factor_ops: metrics.write_factor_ops.load(Ordering::Relaxed),
             row_ops: metrics.row_ops.load(Ordering::Relaxed),
-            nodes_touched_by_updates: metrics.nodes_touched_by_updates.load(Ordering::Relaxed),
+            write_propagation_nodes: metrics.write_propagation_nodes.load(Ordering::Relaxed),
             objects_updated: metrics.objects_updated.load(Ordering::Relaxed),
             join_fallbacks: metrics.join_fallbacks.load(Ordering::Relaxed),
             factor_utilization: metrics.factor_utilization(),
+            query_factor_utilization: metrics.query_factor_utilization(),
             uaf: metrics.uaf(),
+            memory_bytes: crate::metrics::get_current_memory_usage(),
+            storage_bytes,
             current_tick: self.current_tick,
             structural_factor_count: structural_count,
             operational_factor_count: operational_count,
             active_factors: active_lifecycles,
             evicted_factors: evicted,
             phase_name: String::new(),
+            cover_time_ms: 0,
         }
     }
 }
@@ -741,7 +747,7 @@ impl MultiTableGraph {
             }
         }
 
-        metrics.factor_ops.fetch_add(1, Ordering::Relaxed);
+        metrics.query_factor_ops.fetch_add(1, Ordering::Relaxed);
         metrics.total_queries.fetch_add(1, Ordering::Relaxed);
         (result, used_rows)
     }
@@ -766,19 +772,24 @@ impl MultiTableGraph {
 
         MetricsReport {
             total_queries: metrics.total_queries.load(Ordering::Relaxed),
-            factor_ops:    metrics.factor_ops.load(Ordering::Relaxed),
+            query_factor_ops: metrics.query_factor_ops.load(Ordering::Relaxed),
+            write_factor_ops: metrics.write_factor_ops.load(Ordering::Relaxed),
             row_ops:       metrics.row_ops.load(Ordering::Relaxed),
-            nodes_touched_by_updates: metrics.nodes_touched_by_updates.load(Ordering::Relaxed),
+            write_propagation_nodes: metrics.write_propagation_nodes.load(Ordering::Relaxed),
             objects_updated: metrics.objects_updated.load(Ordering::Relaxed),
             join_fallbacks: metrics.join_fallbacks.load(Ordering::Relaxed),
             factor_utilization: metrics.factor_utilization(),
+            query_factor_utilization: metrics.query_factor_utilization(),
             uaf:  metrics.uaf(),
+            memory_bytes: crate::metrics::get_current_memory_usage(),
+            storage_bytes: self.tables.values().map(|g| compute_storage_bytes(&g.factors, &g.boi, &g.bpi)).sum(),
             current_tick: self.max_tick(),
             structural_factor_count:  structural,
             operational_factor_count: operational,
             active_factors:  active_lcs,
             evicted_factors: evicted_lcs,
             phase_name: String::new(),
+            cover_time_ms: 0,
         }
     }
 
@@ -823,6 +834,21 @@ impl MultiTableGraph {
 }
 
 // -----------------------------------------------------------------
+
+fn compute_storage_bytes(
+    factors: &HashMap<u64, crate::types::Factor>,
+    boi: &BOI,
+    bpi: &BPI,
+) -> u64 {
+    let extent_bytes: usize = factors.values().map(|f| f.extent.len() * 4).sum();
+    let intent_bytes: usize = factors.values()
+        .flat_map(|f| f.intent.iter())
+        .map(|s| s.len())
+        .sum();
+    let boi_overhead: usize = boi.values().map(|s| s.len() * 8).sum();
+    let bpi_overhead: usize = bpi.iter().map(|(k, v)| k.len() + v.len() * 8).sum();
+    (extent_bytes + intent_bytes + boi_overhead + bpi_overhead) as u64
+}
 
 impl Delta {
     pub fn get_object_id(&self) -> ObjectId {
