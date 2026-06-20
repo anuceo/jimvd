@@ -10,6 +10,9 @@ pub struct GreedyCover {
     pub relation: HashSet<(ObjectId, PropertyAtom)>,
     /// Pairs not yet covered by any factor
     pub uncovered: HashSet<(ObjectId, PropertyAtom)>,
+    /// Inverted index: atom → set of object IDs with that atom still uncovered.
+    /// Maintained in sync with `uncovered` for O(1) extent lookup per atom.
+    atom_to_objs: HashMap<PropertyAtom, HashSet<ObjectId>>,
 }
 
 impl GreedyCover {
@@ -18,12 +21,14 @@ impl GreedyCover {
         let mut all_objects = HashMap::new();
         let mut atoms_set = HashSet::new();
         let mut relation = HashSet::new();
+        let mut atom_to_objs: HashMap<PropertyAtom, HashSet<ObjectId>> = HashMap::new();
 
         for (oid, props) in objects {
             for (attr, val) in &props {
                 let atom = format!("{}={}", attr, val);
                 atoms_set.insert(atom.clone());
-                relation.insert((oid, atom));
+                relation.insert((oid, atom.clone()));
+                atom_to_objs.entry(atom).or_default().insert(oid);
             }
             all_objects.insert(oid, props);
         }
@@ -36,52 +41,41 @@ impl GreedyCover {
             atoms,
             relation,
             uncovered,
+            atom_to_objs,
         }
     }
 
     /// Find the largest rectangle that covers uncovered pairs.
     /// Returns (extent, intent) or None if nothing left.
+    ///
+    /// Uses the inverted index to avoid the O(|uncovered|) linear scan per atom.
+    /// Cost: O(|atoms| + |atoms| × |best_extent|) per call instead of O(|atoms| × |uncovered|).
     fn largest_rectangle(&self) -> Option<(HashSet<ObjectId>, Vec<PropertyAtom>)> {
         if self.uncovered.is_empty() {
             return None;
         }
 
-        // Greedy: for each atom, compute its uncovered extent.
-        // The rectangle is (extent of most frequent atom, that atom alone).
-        // Then we'll try to enlarge the intent by adding other atoms that are common to the same extent.
-        let mut best_atom: Option<&PropertyAtom> = None;
-        let mut best_extent = Vec::new();
-        let mut best_size = 0;
+        // Find the atom with the most uncovered objects — O(|atoms|) via inverted index.
+        let (base_atom, base_set) = self.atom_to_objs.iter()
+            .filter(|(_, s)| !s.is_empty())
+            .max_by_key(|(_, s)| s.len())?;
 
-        for atom in &self.atoms {
-            let extent: Vec<ObjectId> = self.uncovered
-                .iter()
-                .filter(|(_, a)| a == atom)
-                .map(|(oid, _)| *oid)
-                .collect();
-            if extent.len() > best_size {
-                best_size = extent.len();
-                best_atom = Some(atom);
-                best_extent = extent;
-            }
-        }
-
-        let base_atom = best_atom?;
-        let extent: HashSet<ObjectId> = best_extent.into_iter().collect();
+        let extent: HashSet<ObjectId> = base_set.clone();
         let mut intent = vec![base_atom.clone()];
 
-        // Try to add other atoms that are shared by all objects in the current extent
+        // Try to extend intent: add any atom shared by ALL objects in extent.
+        // O(|atoms| × |extent|) total, short-circuits early.
         for atom in &self.atoms {
             if atom == base_atom {
                 continue;
             }
-            // Check if every object in extent has this atom (according to uncovered)
-            if extent.iter().all(|oid| self.uncovered.contains(&(*oid, atom.clone()))) {
-                intent.push(atom.clone());
+            if let Some(objs) = self.atom_to_objs.get(atom) {
+                if extent.iter().all(|oid| objs.contains(oid)) {
+                    intent.push(atom.clone());
+                }
             }
         }
 
-        // Remove the newly covered pairs from uncovered (we'll do that in build_factors)
         Some((extent, intent))
     }
 
@@ -91,10 +85,14 @@ impl GreedyCover {
         let mut next_id: u64 = 1;
 
         while let Some((extent, intent)) = self.largest_rectangle() {
-            // Remove covered pairs from uncovered
+            // Remove covered pairs from uncovered and from the inverted index.
             for oid in &extent {
                 for atom in &intent {
-                    self.uncovered.remove(&(*oid, atom.clone()));
+                    if self.uncovered.remove(&(*oid, atom.clone())) {
+                        if let Some(objs) = self.atom_to_objs.get_mut(atom) {
+                            objs.remove(oid);
+                        }
+                    }
                 }
             }
 
@@ -110,10 +108,13 @@ impl GreedyCover {
             next_id += 1;
         }
 
-        // Any leftover pairs? Each becomes a singleton factor (one object, one property).
+        // Any leftover pairs become singleton factors.
         while !self.uncovered.is_empty() {
             let pair = self.uncovered.iter().next().cloned().unwrap();
             self.uncovered.remove(&pair);
+            if let Some(objs) = self.atom_to_objs.get_mut(&pair.1) {
+                objs.remove(&pair.0);
+            }
 
             factors.push(Factor {
                 id: next_id,
