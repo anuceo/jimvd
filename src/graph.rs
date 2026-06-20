@@ -50,8 +50,14 @@ impl FactorGraph {
     }
 
     /// Reconstruct a full property map for obj_id by unioning factor intents + overflow.
+    /// Factors are applied last and override overflow for factorized attrs.
     pub fn reconstruct_object(&self, obj_id: ObjectId) -> HashMap<String, String> {
         let mut result = HashMap::new();
+        // Overflow first — non-factorized attrs
+        if let Some(extra) = self.overflow.get(&obj_id) {
+            result.extend(extra.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+        // Factors override — authoritative for factorized attrs (handles stale overflow)
         if let Some(factor_ids) = self.boi.get(&obj_id) {
             for &fid in factor_ids {
                 if let Some(factor) = self.factors.get(&fid) {
@@ -63,10 +69,19 @@ impl FactorGraph {
                 }
             }
         }
-        if let Some(extra) = self.overflow.get(&obj_id) {
-            result.extend(extra.iter().map(|(k, v)| (k.clone(), v.clone())));
-        }
         result
+    }
+
+    /// Remove from overflow any attr=val pairs that are now covered by factors.
+    /// Call this after bulk-loading structural factors to free the redundant overflow data.
+    pub fn finalize_overflow(&mut self) {
+        let covered_atoms: HashSet<String> = self.factors.values()
+            .flat_map(|f| f.intent.iter().cloned())
+            .collect();
+        self.overflow.retain(|_, props| {
+            props.retain(|k, v| !covered_atoms.contains(&format!("{}={}", k, v)));
+            !props.is_empty()
+        });
     }
 
     // -----------------------------------------------------------------
@@ -237,6 +252,21 @@ impl FactorGraph {
                     }
                 }
             }
+        }
+
+        // Keep overflow current: replace with non-factorized attrs from new_props
+        let new_covered: HashSet<String> = self.boi.get(&obj_id).iter()
+            .flat_map(|ids| ids.iter())
+            .filter_map(|fid| self.factors.get(fid))
+            .flat_map(|f| f.intent.iter().cloned())
+            .collect();
+        let new_overflow: HashMap<String, String> = new_props.into_iter()
+            .filter(|(k, v)| !new_covered.contains(&format!("{}={}", k, v)))
+            .collect();
+        if new_overflow.is_empty() {
+            self.overflow.remove(&obj_id);
+        } else {
+            self.overflow.insert(obj_id, new_overflow);
         }
 
         metrics.objects_updated.fetch_add(1, Ordering::Relaxed);

@@ -117,7 +117,7 @@ impl DatabaseRunner for JimvdRunner {
             let delta = self.make_delta(DeltaType::Insert, details);
             self.graph.apply_delta("users", &delta, &self.jmetrics);
         }
-        const IAM_ATTRS: &[&str] = &["role", "region", "department"];
+        const IAM_ATTRS: &[&str] = &["role", "region", "department", "clearance", "tenant"];
         let seed: Vec<(u32, std::collections::HashMap<String, String>)> = self
             .graph
             .tables
@@ -144,6 +144,8 @@ impl DatabaseRunner for JimvdRunner {
             for factor in factors {
                 g.add_factor(factor);
             }
+            // Remove stale overflow entries now covered by structural factors (~1.6 GB freed)
+            g.finalize_overflow();
         }
         log::info!("jimvd_runner: loaded {} users → {} structural factors", n, f);
         Ok(())
