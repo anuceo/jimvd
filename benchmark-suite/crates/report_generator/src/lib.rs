@@ -150,10 +150,10 @@ pub fn plot_multi_engine_factor_util(
     ];
 
     for (i, (label, points)) in series.iter().enumerate() {
-        let color = &palette[i % palette.len()];
+        let color = palette[i % palette.len()];
         chart.draw_series(LineSeries::new(points.iter().cloned(), color))?
             .label(*label)
-            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], *color));
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], color));
     }
 
     chart.configure_series_labels()

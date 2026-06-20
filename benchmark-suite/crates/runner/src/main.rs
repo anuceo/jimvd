@@ -278,7 +278,7 @@ fn main() -> Result<()> {
             let corr = CorrelationConfig::default();
             let wl = WorkloadConfig {
                 read_ratio: 0.6, write_ratio: 0.4, join_ratio: 0.0,
-                total_operations: 5_000,
+                total_operations: 5_000, rng_seed: 0,
             };
 
             // ── 1. Scaling Wall ──────────────────────────────────────────
