@@ -11,7 +11,13 @@ pub struct FactorGraph {
     pub boi: BOI,
     pub bpi: BPI,
     pub factors: HashMap<u64, Factor>,
-    pub objects: HashMap<ObjectId, HashMap<String, String>>,
+
+    /// O(1) exact-intent lookup: sorted_intent_vec → factor_id
+    pub intent_index: HashMap<Vec<String>, u64>,
+    /// All live object IDs (replaces iterating objects.keys())
+    pub live_ids: HashSet<ObjectId>,
+    /// Per-object properties not covered by any factor (usually empty)
+    pub overflow: HashMap<ObjectId, HashMap<String, String>>,
 
     // adaptive materialisation
     pub conjunction_hits: HashMap<String, u64>,
@@ -20,8 +26,8 @@ pub struct FactorGraph {
     pub materialization_threshold: u64,
 
     // lifecycle tracking for metrics
-    pub lifecycles: HashMap<u64, FactorLifecycle>,          // active factors
-    pub completed_lifecycles: Vec<FactorLifecycle>,        // evicted factors
+    pub lifecycles: HashMap<u64, FactorLifecycle>,
+    pub completed_lifecycles: Vec<FactorLifecycle>,
 }
 
 impl FactorGraph {
@@ -31,7 +37,9 @@ impl FactorGraph {
             boi: HashMap::new(),
             bpi: HashMap::new(),
             factors: HashMap::new(),
-            objects: HashMap::new(),
+            intent_index: HashMap::new(),
+            live_ids: HashSet::new(),
+            overflow: HashMap::new(),
             conjunction_hits: HashMap::new(),
             factor_last_access: HashMap::new(),
             current_tick: 0,
@@ -41,6 +49,26 @@ impl FactorGraph {
         }
     }
 
+    /// Reconstruct a full property map for obj_id by unioning factor intents + overflow.
+    pub fn reconstruct_object(&self, obj_id: ObjectId) -> HashMap<String, String> {
+        let mut result = HashMap::new();
+        if let Some(factor_ids) = self.boi.get(&obj_id) {
+            for &fid in factor_ids {
+                if let Some(factor) = self.factors.get(&fid) {
+                    for atom in &factor.intent {
+                        if let Some((attr, val)) = atom.split_once('=') {
+                            result.insert(attr.to_string(), val.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(extra) = self.overflow.get(&obj_id) {
+            result.extend(extra.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+        result
+    }
+
     // -----------------------------------------------------------------
     // Factor management (lifecycle tracking added)
     // -----------------------------------------------------------------
@@ -48,10 +76,14 @@ impl FactorGraph {
     pub fn add_factor(&mut self, factor: Factor) {
         for &obj_id in &factor.extent {
             self.boi.entry(obj_id).or_default().insert(factor.id);
+            self.live_ids.insert(obj_id);
         }
         for prop in &factor.intent {
             self.bpi.entry(prop.clone()).or_default().insert(factor.id);
         }
+        let mut ikey = factor.intent.clone();
+        ikey.sort();
+        self.intent_index.insert(ikey, factor.id);
         self.factor_last_access.insert(factor.id, self.current_tick);
 
         // --- lifecycle recording ---
@@ -68,8 +100,8 @@ impl FactorGraph {
 
     pub fn remove_factor(&mut self, factor_id: u64) {
         if let Some(factor) = self.factors.remove(&factor_id) {
-            for obj_id in factor.extent {
-                if let Some(set) = self.boi.get_mut(&obj_id) {
+            for obj_id in &factor.extent {
+                if let Some(set) = self.boi.get_mut(obj_id) {
                     set.remove(&factor_id);
                 }
             }
@@ -78,10 +110,11 @@ impl FactorGraph {
                     set.remove(&factor_id);
                 }
             }
+            let mut ikey = factor.intent.clone();
+            ikey.sort();
+            self.intent_index.remove(&ikey);
             self.factor_last_access.remove(&factor_id);
 
-            // Reset conjunction_hits so this combination can be re-materialised
-            // if the workload returns to it after eviction.
             if !factor.is_structural {
                 let mut atoms = factor.intent.clone();
                 atoms.sort();
@@ -89,7 +122,6 @@ impl FactorGraph {
                 self.conjunction_hits.remove(&key);
             }
 
-            // --- lifecycle: move to completed ---
             if let Some(mut lc) = self.lifecycles.remove(&factor_id) {
                 lc.evicted_at_tick = Some(self.current_tick);
                 self.completed_lifecycles.push(lc);
@@ -120,7 +152,7 @@ impl FactorGraph {
     fn handle_insert(&mut self, delta: &Delta, metrics: &Metrics) {
         let obj_id = delta.get_object_id();
         let props = delta.get_properties();
-        self.objects.insert(obj_id, props.clone());
+        self.live_ids.insert(obj_id);
 
         let atoms: HashSet<String> = props.iter()
             .map(|(k, v)| format!("{}={}", k, v))
@@ -142,13 +174,27 @@ impl FactorGraph {
                 }
             }
         }
+
+        // Store any properties not captured by any factor in the overflow map
+        let covered: HashSet<String> = self.boi.get(&obj_id).iter()
+            .flat_map(|ids| ids.iter())
+            .filter_map(|fid| self.factors.get(fid))
+            .flat_map(|f| f.intent.iter().cloned())
+            .collect();
+        let uncovered: HashMap<String, String> = props.into_iter()
+            .filter(|(k, v)| !covered.contains(&format!("{}={}", k, v)))
+            .collect();
+        if !uncovered.is_empty() {
+            self.overflow.insert(obj_id, uncovered);
+        }
+
         metrics.objects_updated.fetch_add(1, Ordering::Relaxed);
     }
 
     fn handle_update(&mut self, delta: &Delta, metrics: &Metrics) {
         let obj_id = delta.get_object_id();
         let new_props = delta.get_properties();
-        let old_props = self.objects.get(&obj_id).cloned().unwrap_or_default();
+        let old_props = self.reconstruct_object(obj_id);
 
         let old_atoms: HashSet<String> = old_props.iter().map(|(k,v)| format!("{}={}", k, v)).collect();
         let new_atoms: HashSet<String> = new_props.iter().map(|(k,v)| format!("{}={}", k, v)).collect();
@@ -193,7 +239,6 @@ impl FactorGraph {
             }
         }
 
-        self.objects.insert(obj_id, new_props);
         metrics.objects_updated.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -211,7 +256,8 @@ impl FactorGraph {
             }
         }
         self.boi.remove(&obj_id);
-        self.objects.remove(&obj_id);
+        self.overflow.remove(&obj_id);
+        self.live_ids.remove(&obj_id);
         metrics.objects_updated.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -250,7 +296,6 @@ impl FactorGraph {
             QueryFilter::Eq { attribute, value } => {
                 let atom = format!("{}={}", attribute, value);
                 if let Some(factor_ids) = self.bpi.get(&atom) {
-                    // Attribute is in factor space
                     let mut result = HashSet::new();
                     for fid in factor_ids {
                         if let Some(factor) = self.factors.get(fid) {
@@ -259,17 +304,34 @@ impl FactorGraph {
                     }
                     (result, false)
                 } else {
-                    // Not in factor space — scan all objects (row reconstruction)
+                    // Not in factor space — scan live objects via reconstruction
                     let mut result = HashSet::new();
-                    for (id, props) in &self.objects {
-                        if props.get(attribute.as_str()) == Some(value) {
-                            result.insert(*id);
+                    for &id in &self.live_ids {
+                        let props = self.reconstruct_object(id);
+                        if props.get(attribute.as_str()).map(|v| v.as_str()) == Some(value.as_str()) {
+                            result.insert(id);
                         }
                     }
                     (result, true)
                 }
             }
             QueryFilter::And(sub_filters) => {
+                // Fast path: pure-Eq conjunction → O(1) intent_index lookup
+                let atoms: Option<Vec<String>> = sub_filters.iter().map(|f| {
+                    if let QueryFilter::Eq { attribute, value } = f {
+                        Some(format!("{}={}", attribute, value))
+                    } else { None }
+                }).collect();
+                if let Some(mut key) = atoms {
+                    key.sort();
+                    if let Some(&fid) = self.intent_index.get(&key) {
+                        let result = self.factors.get(&fid)
+                            .map(|f| f.extent.clone())
+                            .unwrap_or_default();
+                        return (result, false);
+                    }
+                }
+                // Slow path: intersect sub-results
                 let mut sets: Vec<HashSet<ObjectId>> = Vec::new();
                 let mut used_rows = false;
                 for f in sub_filters {
@@ -325,6 +387,21 @@ impl FactorGraph {
                 result
             }
             QueryFilter::And(sub_filters) => {
+                // Fast path: pure-Eq conjunction → O(1) intent_index lookup
+                let atoms: Option<Vec<String>> = sub_filters.iter().map(|f| {
+                    if let QueryFilter::Eq { attribute, value } = f {
+                        Some(format!("{}={}", attribute, value))
+                    } else { None }
+                }).collect();
+                if let Some(mut key) = atoms {
+                    key.sort();
+                    if let Some(&fid) = self.intent_index.get(&key) {
+                        return self.factors.get(&fid)
+                            .map(|f| f.extent.clone())
+                            .unwrap_or_default();
+                    }
+                }
+                // Slow path
                 let mut iter = sub_filters.iter();
                 if let Some(first) = iter.next() {
                     let mut result = self.eval_filter(first);
@@ -442,24 +519,8 @@ impl FactorGraph {
         metrics.row_ops.fetch_add(1, Ordering::Relaxed);
         let mut rows = Vec::new();
         for &oid in object_ids {
-            let mut row = HashMap::new();
+            let mut row = self.reconstruct_object(oid);
             row.insert("id".to_string(), oid.to_string());
-            if let Some(props) = self.objects.get(&oid) {
-                for (attr, val) in props {
-                    row.insert(attr.clone(), val.clone());
-                }
-            } else {
-                let factor_ids = self.boi.get(&oid).cloned().unwrap_or_default();
-                for fid in factor_ids {
-                    if let Some(factor) = self.factors.get(&fid) {
-                        for atom in &factor.intent {
-                            if let Some((attr, val)) = atom.split_once('=') {
-                                row.insert(attr.to_string(), val.to_string());
-                            }
-                        }
-                    }
-                }
-            }
             rows.push(row);
         }
         rows
@@ -593,9 +654,9 @@ impl MultiTableGraph {
     ) -> (HashSet<ObjectId>, bool) {
         let tg = self.table(table);
         if filters.is_empty() {
-            return (tg.objects.keys().cloned().collect(), false);
+            return (tg.live_ids.clone(), false);
         }
-        let mut result: HashSet<ObjectId> = tg.objects.keys().cloned().collect();
+        let mut result: HashSet<ObjectId> = tg.live_ids.clone();
         let mut used_rows = false;
 
         for filter in filters {
@@ -612,10 +673,8 @@ impl MultiTableGraph {
                         result = result.intersection(&matches).cloned().collect();
                     } else {
                         result = result.into_iter().filter(|id| {
-                            tg.objects.get(id)
-                                .and_then(|props| props.get(attribute))
-                                .map(|v| v == value)
-                                .unwrap_or(false)
+                            let props = tg.reconstruct_object(*id);
+                            props.get(attribute.as_str()).map(|v| v == value).unwrap_or(false)
                         }).collect();
                         used_rows = true;
                     }
@@ -672,16 +731,18 @@ impl MultiTableGraph {
             .collect();
 
         if left_factors.is_empty() || right_factors.is_empty() {
-            // Row-based fallback: nested-loop join on the raw object stores.
+            // Row-based fallback: nested-loop join via row reconstruction.
             metrics.row_ops.fetch_add(1, Ordering::Relaxed);
             metrics.total_queries.fetch_add(1, Ordering::Relaxed);
             metrics.join_fallbacks.fetch_add(1, Ordering::Relaxed);
             let mut result = HashSet::new();
             for &l in &left_universe {
-                let lval = left_graph.objects.get(&l).and_then(|p| p.get(join_attr));
+                let lprops = left_graph.reconstruct_object(l);
+                let lval = lprops.get(join_attr).cloned();
                 if lval.is_none() { continue; }
                 for &r in &right_universe {
-                    if right_graph.objects.get(&r).and_then(|p| p.get(join_attr)) == lval {
+                    let rprops = right_graph.reconstruct_object(r);
+                    if rprops.get(join_attr) == lval.as_ref() {
                         result.insert((l, r));
                     }
                 }
@@ -700,10 +761,12 @@ impl MultiTableGraph {
             metrics.join_fallbacks.fetch_add(1, Ordering::Relaxed);
             let mut result = HashSet::new();
             for &l in &left_universe {
-                let lval = left_graph.objects.get(&l).and_then(|p| p.get(join_attr));
+                let lprops = left_graph.reconstruct_object(l);
+                let lval = lprops.get(join_attr).cloned();
                 if lval.is_none() { continue; }
                 for &r in &right_universe {
-                    if right_graph.objects.get(&r).and_then(|p| p.get(join_attr)) == lval {
+                    let rprops = right_graph.reconstruct_object(r);
+                    if rprops.get(join_attr) == lval.as_ref() {
                         result.insert((l, r));
                     }
                 }

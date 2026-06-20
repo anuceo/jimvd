@@ -123,13 +123,13 @@ impl DatabaseRunner for JimvdRunner {
             .tables
             .get("users")
             .map(|g| {
-                g.objects
+                g.live_ids
                     .iter()
-                    .map(|(&oid, props)| {
+                    .map(|&oid| {
+                        let props = g.reconstruct_object(oid);
                         let iam: std::collections::HashMap<String, String> = props
-                            .iter()
+                            .into_iter()
                             .filter(|(k, _)| IAM_ATTRS.contains(&k.as_str()))
-                            .map(|(k, v)| (k.clone(), v.clone()))
                             .collect();
                         (oid, iam)
                     })
@@ -196,8 +196,7 @@ impl DatabaseRunner for JimvdRunner {
                     .graph
                     .tables
                     .get("users")
-                    .and_then(|g| g.objects.get(&(*user_id as u32)))
-                    .cloned()
+                    .map(|g| g.reconstruct_object(*user_id as u32))
                     .unwrap_or_default();
                 let mut details = serde_json::Map::new();
                 details.insert("id".to_string(), serde_json::Value::Number((*user_id as u32).into()));

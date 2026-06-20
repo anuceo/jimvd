@@ -109,11 +109,18 @@ impl BenchmarkRunner {
                     }
                 }
 
-                graph.objects.insert(oid, props.clone());
-
-                let factorized: HashMap<String, String> = props.into_iter()
-                    .filter(|(k, _)| factorize_set.contains(k))
+                let factorized: HashMap<String, String> = props.iter()
+                    .filter(|(k, _)| factorize_set.contains(k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
+                // Non-factorized attrs stored in overflow after factors are built
+                let non_factorized: HashMap<String, String> = props.into_iter()
+                    .filter(|(k, _)| !factorize_set.contains(k.as_str()))
+                    .collect();
+                if !non_factorized.is_empty() {
+                    graph.overflow.insert(oid, non_factorized);
+                }
+                graph.live_ids.insert(oid);
                 seed_objects.push((oid, factorized));
             }
 
@@ -307,9 +314,12 @@ impl BenchmarkRunner {
                 if v != "__NULL__" { return v; }
             }
         }
+        // Sample from known values in the factor space (BPI keys)
+        let prefix = format!("{}=", attr);
         let vals: Vec<String> = self.multi.tables.values()
-            .flat_map(|g| g.objects.values())
-            .filter_map(|props| props.get(attr).cloned())
+            .flat_map(|g| g.bpi.keys())
+            .filter(|a| a.starts_with(&prefix))
+            .filter_map(|a| a.splitn(2, '=').nth(1).map(|v| v.to_string()))
             .collect();
         if !vals.is_empty() {
             return vals[rng.random_range(0..vals.len())].clone();
@@ -353,8 +363,7 @@ impl BenchmarkRunner {
             DeltaType::Update => {
                 let existing: HashMap<String, String> = self.multi
                     .tables.get(&table_name)
-                    .and_then(|g| g.objects.get(&obj_id))
-                    .cloned()
+                    .map(|g| g.reconstruct_object(obj_id))
                     .unwrap_or_default();
                 for (k, v) in existing {
                     details.insert(k, serde_json::Value::String(v));

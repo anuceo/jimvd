@@ -73,7 +73,14 @@ fn main() -> Result<()> {
         let factors = cover.build_factors();
         println!("[Init:{}] {} objects → {} structural factors", table_name, spec.initial_objects, factors.len());
         for f in factors { graph.add_factor(f); }
-        for (oid, props) in &raw_data { graph.objects.insert(*oid, props.clone()); }
+        // Non-factorized props stored in overflow; live_ids populated by add_factor
+        for (oid, props) in &raw_data {
+            let non_fact: HashMap<String, String> = props.iter()
+                .filter(|(k, _)| !graph.bpi.keys().any(|a| a.starts_with(&format!("{}=", k))))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            if !non_fact.is_empty() { graph.overflow.insert(*oid, non_fact); }
+        }
         m_graph.add_table(table_name.to_string(), graph);
     }
 
@@ -175,11 +182,11 @@ fn main() -> Result<()> {
                 m_graph.apply_delta(tbl, &delta, &metrics);
 
             } else if wroll < wm.insert_rate + wm.update_rate {
-                let ids: Vec<u32> = m_graph.table(tbl).objects.keys().cloned().collect();
+                let ids: Vec<u32> = m_graph.table(tbl).live_ids.iter().cloned().collect();
                 if ids.is_empty() { continue; }
                 let target = ids[rng.random_range(0..ids.len())];
                 let existing: HashMap<String, String> =
-                    m_graph.table(tbl).objects.get(&target).cloned().unwrap_or_default();
+                    m_graph.table(tbl).reconstruct_object(target);
                 let spec = &config.tables[tbl];
                 let attr = &wm.attributes[rng.random_range(0..wm.attributes.len())];
                 if let Some(def) = spec.attributes.get(attr) {
@@ -196,7 +203,7 @@ fn main() -> Result<()> {
                     m_graph.apply_delta(tbl, &delta, &metrics);
                 }
             } else {
-                let ids: Vec<u32> = m_graph.table(tbl).objects.keys().cloned().collect();
+                let ids: Vec<u32> = m_graph.table(tbl).live_ids.iter().cloned().collect();
                 if ids.is_empty() { continue; }
                 let target = ids[rng.random_range(0..ids.len())];
                 let mut kv = serde_json::Map::new();

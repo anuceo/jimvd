@@ -1,0 +1,41 @@
+[
+  {
+    "runner_name": "jimvd",
+    "snapshots": [
+      {
+        "phase": "IAM",
+        "phase_index": 0,
+        "ops_into_phase": 7522,
+        "total_ops": 7522,
+        "metrics": {
+          "p50_latency_us": 57416,
+          "p95_latency_us": 665468,
+          "p99_latency_us": 715295,
+          "throughput_ops_sec": 0.0,
+          "storage_bytes": 47985510,
+          "metadata_bytes": 0,
+          "factor_utilization": 0.8297469313532353,
+          "query_factor_ops": 2308,
+          "write_factor_ops": 8643,
+          "write_propagation_nodes": 8643,
+          "query_factor_utilization": 0.5066959385290889,
+          "uaf": 3.96831955922865,
+          "factor_count": 23,
+          "graph_nodes": 23,
+          "memory_peak_bytes": 1722032128,
+          "join_fallbacks": 0,
+          "join_queries": 0
+        }
+      }
+    ],
+    "adaptation_latencies": [
+      {
+        "phase": "IAM",
+        "phase_index": 0,
+        "latency_ops": null
+      }
+    ],
+    "total_elapsed_secs": 1547.603810331,
+    "interrupted": true
+  }
+]
