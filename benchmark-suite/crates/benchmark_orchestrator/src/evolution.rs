@@ -29,6 +29,7 @@ pub fn run_long_term_evolution(
         write_ratio,
         join_ratio: 0.0,
         total_operations: total_ops,
+        rng_seed: 0,
     };
 
     let mut wl = WorkloadGenerator::new(

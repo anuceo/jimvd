@@ -30,6 +30,22 @@ enum Command {
         total_ops: usize,
     },
     Full,
+    /// The single definitive benchmark: 1M users, 100M ops, 6 workload shifts, JimVD vs DuckDB.
+    MainEvent {
+        #[arg(long, default_value = "1000000")]
+        users: usize,
+        /// Ops per phase (6 phases → total = 6 × ops_per_phase).
+        #[arg(long, default_value = "16666666")]
+        ops_per_phase: usize,
+        /// How often to capture a metrics snapshot (in operations).
+        #[arg(long, default_value = "1000000")]
+        snapshot_interval: usize,
+        /// Factor utilization threshold for measuring adaptation latency.
+        #[arg(long, default_value = "0.9")]
+        adaptation_threshold: f64,
+    },
+    /// Quick smoke test: 1K users, 6 × 2K ops — verifies the suite runs end-to-end in seconds.
+    QuickSmoke,
 }
 
 #[derive(Deserialize, Default)]
@@ -85,12 +101,14 @@ fn make_workload(wt: Option<WorkloadToml>, default_total: usize) -> WorkloadConf
             write_ratio:      0.4,
             join_ratio:       0.0,
             total_operations: default_total,
+            rng_seed:         0,
         },
         Some(w) => WorkloadConfig {
             read_ratio:       w.read_ratio.unwrap_or(0.6),
             write_ratio:      w.write_ratio.unwrap_or(0.4),
             join_ratio:       w.join_ratio.unwrap_or(0.0),
             total_operations: w.total_operations.unwrap_or(default_total),
+            rng_seed:         0,
         },
     }
 }
@@ -342,6 +360,165 @@ fn main() -> Result<()> {
             }
 
             println!("\nFull benchmark complete — results written to results/");
+        }
+
+        Command::MainEvent { users, ops_per_phase, snapshot_interval, adaptation_threshold } => {
+            let total_ops = 6 * ops_per_phase;
+            println!("=== Main Event ===");
+            println!("  users          : {}", users);
+            println!("  ops_per_phase  : {} ({} phases → {} total)", ops_per_phase, 6, total_ops);
+            println!("  snapshot_every : {} ops", snapshot_interval);
+            println!("  adapt_threshold: {:.0}%", adaptation_threshold * 100.0);
+
+            let corr = CorrelationConfig::default();
+            let dataset = data_generator::generate_users(users, &corr);
+            let mut all_results: Vec<benchmark_orchestrator::main_event::MainEventResult> = Vec::new();
+            let mut all_rows: Vec<report_generator::PhaseMetricRow> = Vec::new();
+
+            // ── JimVD ──────────────────────────────────────────────────────
+            {
+                let mut runner = jimvd_runner::JimvdRunner::new(3, 10_000);
+                println!("\n--- Running JimVD ({} users) ---", dataset.len());
+                let result = benchmark_orchestrator::main_event::run_main_event(
+                    &mut runner, &dataset, ops_per_phase, snapshot_interval, adaptation_threshold,
+                );
+                for s in &result.snapshots {
+                    all_rows.push(report_generator::PhaseMetricRow {
+                        runner:             result.runner_name.clone(),
+                        phase:              s.phase.clone(),
+                        phase_index:        s.phase_index,
+                        ops_into_phase:     s.ops_into_phase,
+                        total_ops:          s.total_ops,
+                        p50_us:             s.metrics.p50_latency_us,
+                        p99_us:             s.metrics.p99_latency_us,
+                        factor_utilization: s.metrics.factor_utilization,
+                        uaf:                s.metrics.uaf,
+                        memory_bytes:       s.metrics.memory_peak_bytes,
+                        storage_bytes:      s.metrics.storage_bytes,
+                    });
+                }
+                println!("[JimVD] completed in {:.1}s", result.total_elapsed_secs);
+                all_results.push(result);
+            }
+
+            // ── DuckDB ─────────────────────────────────────────────────────
+            if let Ok(mut runner) = duckdb_runner::DuckdbRunner::new() {
+                println!("\n--- Running DuckDB ({} users) ---", dataset.len());
+                let result = benchmark_orchestrator::main_event::run_main_event(
+                    &mut runner, &dataset, ops_per_phase, snapshot_interval, adaptation_threshold,
+                );
+                for s in &result.snapshots {
+                    all_rows.push(report_generator::PhaseMetricRow {
+                        runner:             result.runner_name.clone(),
+                        phase:              s.phase.clone(),
+                        phase_index:        s.phase_index,
+                        ops_into_phase:     s.ops_into_phase,
+                        total_ops:          s.total_ops,
+                        p50_us:             s.metrics.p50_latency_us,
+                        p99_us:             s.metrics.p99_latency_us,
+                        factor_utilization: s.metrics.factor_utilization,
+                        uaf:                s.metrics.uaf,
+                        memory_bytes:       s.metrics.memory_peak_bytes,
+                        storage_bytes:      s.metrics.storage_bytes,
+                    });
+                }
+                println!("[DuckDB] completed in {:.1}s", result.total_elapsed_secs);
+                all_results.push(result);
+            } else {
+                println!("\n[DuckDB] not available — skipping");
+            }
+
+            // ── Write outputs ──────────────────────────────────────────────
+            report_generator::write_json("results/main_event.json", &all_results)?;
+            report_generator::write_main_event_csv("results/main_event.csv", &all_rows)?;
+
+            // Factor utilization plot — one series per engine.
+            let series: Vec<(&str, Vec<(usize, f64)>)> = all_results.iter()
+                .map(|r| {
+                    let pts: Vec<(usize, f64)> = r.snapshots.iter()
+                        .map(|s| (s.total_ops, s.metrics.factor_utilization))
+                        .collect();
+                    (r.runner_name.as_str(), pts)
+                })
+                .collect();
+            report_generator::plot_multi_engine_factor_util(
+                "results/main_event_factor_util.png", &series,
+            )?;
+
+            // Adaptation latency plot — one bar per (engine, phase).
+            let bars: Vec<(String, Option<usize>)> = all_results.iter()
+                .flat_map(|r| r.adaptation_latencies.iter().map(move |a| {
+                    (format!("{}:{}", r.runner_name, a.phase), a.latency_ops)
+                }))
+                .collect();
+            let bar_refs: Vec<(&str, Option<usize>)> =
+                bars.iter().map(|(l, v)| (l.as_str(), *v)).collect();
+            report_generator::plot_adaptation_latency(
+                "results/main_event_adaptation.png", &bar_refs, ops_per_phase,
+            )?;
+
+            // ── Console summary ────────────────────────────────────────────
+            println!("\n=== Main Event Summary ===");
+            for result in &all_results {
+                println!("\n[{}] total elapsed: {:.1}s", result.runner_name, result.total_elapsed_secs);
+                println!("{:<12} {:<14} {:<10} {:<10} {:<12}",
+                    "Phase", "AdaptLatency", "FinalUtil", "FinalUAF", "P99(µs)");
+                for (al, snap) in result.adaptation_latencies.iter()
+                    .zip(result.snapshots.iter().filter(|s| s.ops_into_phase == ops_per_phase))
+                {
+                    println!("{:<12} {:<14} {:<10.3} {:<10.3} {:<12}",
+                        al.phase,
+                        al.latency_ops.map(|n| n.to_string()).unwrap_or_else(|| "never".to_string()),
+                        snap.metrics.factor_utilization,
+                        snap.metrics.uaf,
+                        snap.metrics.p99_latency_us);
+                }
+            }
+            println!("\nOutputs written to results/");
+        }
+
+        Command::QuickSmoke => {
+            println!("=== Quick Smoke Test ===");
+            const SMOKE_USERS: usize        = 1_000;
+            const SMOKE_OPS_PER_PHASE: usize = 2_000;
+            const SMOKE_SNAPSHOT: usize     = 500;
+
+            let corr = CorrelationConfig::default();
+            let dataset = data_generator::generate_users(SMOKE_USERS, &corr);
+            let mut passed = 0usize;
+            let mut failed = 0usize;
+
+            macro_rules! smoke {
+                ($label:expr, $runner:expr) => {{
+                    let mut r = $runner;
+                    let result = benchmark_orchestrator::main_event::run_main_event(
+                        &mut r, &dataset, SMOKE_OPS_PER_PHASE, SMOKE_SNAPSHOT, 0.5,
+                    );
+                    if result.snapshots.is_empty() {
+                        println!("  [FAIL] {} — no snapshots produced", $label);
+                        failed += 1;
+                    } else {
+                        let last = result.snapshots.last().unwrap();
+                        println!("  [OK]   {} — util={:.3} uaf={:.3} elapsed={:.2}s",
+                            $label, last.metrics.factor_utilization,
+                            last.metrics.uaf, result.total_elapsed_secs);
+                        passed += 1;
+                    }
+                }};
+            }
+
+            smoke!("JimVD", jimvd_runner::JimvdRunner::new(3, 10_000));
+
+            if let Ok(ddb) = duckdb_runner::DuckdbRunner::new() {
+                smoke!("DuckDB", ddb);
+            } else {
+                println!("  [SKIP] DuckDB — feature not available");
+            }
+
+            println!("\nSmoke test: {}/{} engines passed", passed, passed + failed);
+            if failed > 0 {
+                std::process::exit(1);
+            }
         }
     }
 
